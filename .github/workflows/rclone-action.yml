@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - "lib/**"
+      - ".github/workflows/rclone-action.yml"
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,14 +19,15 @@ jobs:
   sync:
     if: github.repository == 'z-shell/zi-src'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       local_path: "lib"
       remote_path: "r2:r2-store/src"
     steps:
       - name: "⤵️ Check out code from GitHub"
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: "⏫ Run rclone/r2-store"
-        uses: z-shell/.github/actions/rclone@v1
+        uses: z-shell/.github/actions/rclone@91068ee88e8788deff439d6ee36b77329edeb98a # v1.0.8
         with:
           config: ${{ secrets.R2_STORE }}
           args: "copy --check-first ${{ env.local_path }} ${{ env.remote_path }}"

@@ -5,24 +5,34 @@ on:
     branches: [main]
     paths:
       - "lib/sh/**"
+      - "lib/zsh/**"
+      - "tests/**"
+      - ".github/workflows/check-linux.yml"
   pull_request:
     branches: [main]
     paths:
       - "lib/sh/**"
+      - "lib/zsh/**"
+      - "tests/**"
+      - ".github/workflows/check-linux.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   shellcheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: ⤵️ Check out code from GitHub
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: ☑️ ShellCheck
-        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: "./lib/sh"
 
@@ -32,24 +42,26 @@ jobs:
     needs: [shellcheck]
     steps:
       - name: ⤵️ Check out code from GitHub
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: ⚙️ Prepare dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y zsh
+      - name: "⚙️ Check: unit fixtures"
+        run: sh ./tests/installers.sh
       - name: "⚙️  Check: install.sh -- -i skip"
-        run: sh -x ./lib/sh/install.sh -- -i skip; command rm -rf ~/.zi
-      - name: "⚙️  Check: install.sh -- -i annex"
-        run: sh -x ./lib/sh/install.sh -- -a annex; command rm -rf ~/.zi
-      - name: "⚙️  Check: install.sh -- -i loader"
-        run: sh -x ./lib/sh/install.sh -- -a loader; command rm -rf ~/.zi
-      - name: "⚙️  Check: install.sh -- -i zunit"
-        run: sh -x ./lib/sh/install.sh -- -a zunit; command rm -rf ~/.zi
+        run: sh -x ./lib/sh/install.sh -- -i skip; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+      - name: "⚙️  Check: install.sh -- -a annex"
+        run: sh -x ./lib/sh/install.sh -- -a annex; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+      - name: "⚙️  Check: install.sh -- -a loader"
+        run: sh -x ./lib/sh/install.sh -- -a loader; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+      - name: "⚙️  Check: install.sh -- -a zunit"
+        run: sh -x ./lib/sh/install.sh -- -a zunit; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️ Check: install_zpmod.sh"
         run: sh -x ./lib/sh/install_zpmod.sh
       - name: ⚙️ Load zpmod module
         run: |
-          module_path+=( "$HOME/.zi/zmodules/zpmod/Src" )
+          module_path+=( "${XDG_DATA_HOME:-$HOME/.local/share}/zi/zmodules/zpmod/Src" )
           zmodload zi/zpmod
           zpmod source-study -l
         shell: zsh {0}
