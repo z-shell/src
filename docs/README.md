@@ -31,13 +31,40 @@
   - https://wiki.zshell.dev
 - Loader:
   - https://init.zshell.dev
-  - https://git.io/zi-loader
 - Installer:
   - https://get.zshell.dev
-  - https://git.io/get-zi
 - R2:
   - https://r2.zshell.dev
 - IPFS:
   - https://ipfs.zshell.dev
 - jsDeliver:
   - https://cdn.jsdelivr.net/gh/z-shell/zi-src@main/
+
+### Maintainer — Verify and Sync Loader
+
+Check whether the local `lib/zsh/init.zsh` matches the canonical GitHub raw `main` copy:
+
+```sh
+sh lib/sh/sync-init.sh
+```
+
+Replace the local file if it drifts:
+
+```sh
+sh lib/sh/sync-init.sh --write
+```
+
+Run against local fixtures (no network required, useful in tests):
+
+```sh
+sh lib/sh/sync-init.sh \
+  --local  /tmp/my-init.zsh \
+  --remote /tmp/remote-init.zsh \
+  --checksum-url /tmp/checksum.txt
+```
+
+Skip checksum validation:
+
+```sh
+sh lib/sh/sync-init.sh --no-checksum
+```
