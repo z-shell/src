@@ -2,8 +2,10 @@
 # -*- mode: sh; sh-indentation: 2; indent-tabs-mode: nil; sh-basic-offset: 2; -*-
 # vim: ft=sh sw=2 ts=2 et
 
-trap 'rm -rf "$WORKDIR"' EXIT INT
-WORKDIR="$(mktemp -d)"
+set -eu
+
+WORKDIR="$(mktemp -d)" || exit 1
+trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 ZOPT=""
 AOPT=""
 BOPT="main"
@@ -43,21 +45,21 @@ if [ "${AOPT}" = loader ]; then
     command wget -qO "${ZI_CONFIG_DIR}/init.zsh" https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh
   fi
   command chmod go-w "${ZI_CONFIG_DIR}" && command chmod a+x "${ZI_CONFIG_DIR}/init.zsh"
-  command sed -i "s/branch=\"main\"/branch=\"${BOPT}\"/g" "${ZI_CONFIG_DIR}/init.zsh"
+  # shellcheck disable=SC2016
+  command sed -i 's|: ${ZI\[STREAM\]:="main"}|: ${ZI[STREAM]:="'"${BOPT}"'"}|' "${ZI_CONFIG_DIR}/init.zsh"
 fi
 
-if [ -z "${ZI_HOME}" ]; then
-  ZI_HOME="${ZDOTDIR:-${HOME}}/.zi"
+if [ -z "${ZI_HOME-}" ]; then
+  ZI_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zi"
 fi
 
-if [ -z "${ZI_BIN_DIR_NAME}" ]; then
+if [ -z "${ZI_BIN_DIR_NAME-}" ]; then
   ZI_BIN_DIR_NAME="bin"
 fi
 
 if ! test -d "${ZI_HOME}"; then
   command mkdir "${ZI_HOME}"
   command chmod go-w "${ZI_HOME}"
-  command chmod go-w "${ZI_HOME}/${ZI_BIN_DIR_NAME}"
 fi
 
 if ! command -v git >/dev/null 2>&1; then
@@ -68,31 +70,32 @@ fi
 # Get the download-progress bar tool
 if command -v curl >/dev/null 2>&1; then
   command mkdir -p /tmp/zi
-  cd /tmp/zi || return
+  cd /tmp/zi || exit 1
   command curl -fsSLO https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh &&
     command chmod a+x /tmp/zi/git-process-output.zsh
 elif command -v wget >/dev/null 2>&1; then
   command mkdir -p /tmp/zi
-  cd /tmp/zi || return
+  cd /tmp/zi || exit 1
   command wget -q https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh &&
     command chmod a+x /tmp/zi/git-process-output.zsh
 fi
 
 if test -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}/.git"; then
-  cd "${ZI_HOME}/${ZI_BIN_DIR_NAME}" || return
+  cd "${ZI_HOME}/${ZI_BIN_DIR_NAME}" || exit 1
   printf '%s\n' "[1;34m▓▒░[0m Updating [1;36m(z-shell/zi)[1;33m plugin manager[0m at [1;35m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
   command git clean -d -f -f
   command git reset --hard HEAD
-  command git pull -q origin HEAD
+  command git pull -q origin "${BOPT}"
 else
-  cd "${ZI_HOME}" || return
+  cd "${ZI_HOME}" || exit 1
   printf '%s\n' "[1;34m▓▒░[0m Installing [1;36m(z-shell/zi)[1;33m plugin manager[0m at [1;35m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
   { git clone --progress --depth=1 --branch "${BOPT}" https://github.com/z-shell/zi.git "${ZI_BIN_DIR_NAME}" \
     2>&1 | { /tmp/zi/git-process-output.zsh || cat; }; } 2>/dev/null
-  if [ -d "${ZI_BIN_DIR_NAME}" ]; then
+  if [ -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}" ] && [ -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh" ]; then
     printf '%s\n' "[1;34m▓▒░[0m Successfully installed at [1;32m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m".
   else
     printf '%s\n' "[1;31m▓▒░[0m Something went wrong, couldn't install ZI at [1;33m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
+    exit 1
   fi
 fi
 
@@ -106,7 +109,7 @@ MAIN_PROFILE() {
     printf '%s\n' "[34m▓▒░[34m Seems that .zshrc already has content or setup skipped - no changes will be made."
     ZOPT='skip'
   fi
-  if [ "${ZOPT}" != skip ]; then
+  if [ "${ZOPT}" != skip ] && [ "${AOPT}" != loader ]; then
     printf '%s\n' "[34m▓▒░[0m Updating ${THE_ZDOTDIR}/.zshrc"
     ZI_HOME="$(echo "${ZI_HOME}" | sed "s|${HOME}|\$HOME|")"
     command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
@@ -126,10 +129,9 @@ EOF
     printf '%s\n' "[34m▓▒░[0m[1;36m Minimal configuration[0m"
   fi
   if [ "${AOPT}" = loader ] && [ "${ZOPT}" != skip ]; then
-    command rm -rf "${THE_ZDOTDIR}/.zshrc"
     command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
-if [[ -r "${XDG_CONFIG_HOME:-${HOME}/.config}/zi/init.zsh" ]]; then
-  source "${XDG_CONFIG_HOME:-${HOME}/.config}/zi/init.zsh" && zzinit
+if [[ -r "\${XDG_CONFIG_HOME:-\${HOME}/.config}/zi/init.zsh" ]]; then
+  source "\${XDG_CONFIG_HOME:-\${HOME}/.config}/zi/init.zsh" && zzinit
 fi
 EOF
     printf '%s\n' "[34m▓▒░[0m[1;36m Loader added[0m"
@@ -164,86 +166,38 @@ EOF
   fi
 }
 
-SETUP_ZPMOD() {
-  if ! test -d "${ZI_HOME}/${MOD_HOME}"; then
-    command mkdir -p "${ZI_HOME}/${MOD_HOME}"
-    command chmod go-w "${ZI_HOME}/${MOD_HOME}"
-  fi
-
-  printf '%s\n' "${col_pname}== Downloading ZPMOD module to ${ZI_HOME}/${MOD_HOME}"
-  if test -d "${ZI_HOME}/${MOD_HOME}/.git"; then
-    cd "${ZI_HOME}/${MOD_HOME}" || return
-    git pull -q origin main
-  else
-    cd "${ZI_HOME}" || return
-    git clone -q https://github.com/z-shell/zpmod.git "${MOD_HOME}"
-  fi
-  printf '%s\n' "${col_pname}== Done"
-}
-
-BUILD_ZPMOD() {
-  if command -v zsh >/dev/null; then
-    printf '%s\n' "${col_info2}-- Checkig version --${col_rst}"
-    ZSH_CURRENT=$(zsh --version </dev/null | head -n1 | cut -d" " -f2,6- | tr -d '-')
-    ZSH_REQUIRED="5.8.1"
-    if expr "${ZSH_CURRENT}" \< "${ZSH_REQUIRED}" >/dev/null; then
-      printf '%s\n' "${col_error}-- Zsh version 5.8.1 and above required --${col_rst}"
-      exit 1
-    else
-      printf '%s\n' "${col_info2}-- Zsh version ${ZSH_CURRENT} --${col_rst}"
-      cd "${ZI_HOME}/${MOD_HOME}" || return
-      printf '%s\n' "${col_pname}== Building module ZPMOD, running: a make clean, then ./configure and then make ==${col_rst}"
-      printf '%s\n' "${col_pname}== The module sources are located at: ${ZI_HOME}/${MOD_HOME} ==${col_rst}"
-      if test -f Makefile; then
-        if [ "$1" = "--clean" ]; then
-          printf '%s\n' "${col_info2}-- make distclean --${col_rst}"
-          make -s distclean
-          true
-        else
-          printf '%s\n' "${col_info2}-- make clean (pass --clean to invoke \`make distclean') --${col_rst}"
-          make -s clean
-        fi
-      fi
-      printf '%s\n' "${col_info2}-- Configuring --${col_rst}"
-      if CPPFLAGS=-I/usr/local/include CFLAGS="-g -Wall -O3" LDFLAGS=-L/usr/local/lib ./configure --disable-gdbm --without-tcsetpgrp; then
-        printf '%s\n' "${col_info2}-- Running make --${col_rst}"
-        if make -s; then
-          command cat <<-EOF
-[38;5;219m▓▒░[0m [38;5;220mModule [38;5;177mhas been built correctly.
-[38;5;219m▓▒░[0m [38;5;220mTo [38;5;160mload the module, add following [38;5;220m2 lines to [38;5;172m.zshrc, at top:
-[0m [38;5;51m module_path+=( "${ZI_HOME}/${MOD_HOME}/Src" )
-[0m [38;5;51m zmodload zi/zpmod
-[38;5;219m▓▒░[0m [38;5;220mSee 'zpmod -h' for more information.
-[38;5;219m▓▒░[0m [38;5;220mRun 'zpmod source-study' to see profile data,
-[38;5;219m▓▒░[0m [38;5;177mGuaranteed, automatic compilation of any sourced script.
-EOF
-        else
-          printf '%s\n' "${col_error}Module didn't build.${col_rst}. You can copy the error messages and submit"
-          printf '%s\n' "error-report at: https://github.com/z-shell/zpmod/issues"
-        fi
-      fi
-    fi
-  else
-    printf '%s\n' "${col_error} Zsh is not installed. Please install zsh and try again.${col_rst}"
-  fi
-}
-
 ZPMOD_PROFILE() {
-  col_pname="[33m"
-  col_error="[31m"
-  col_info="[32m"
-  col_info2="[32m"
-  col_rst="[0m"
+  _zpmod_sh=""
+  case "$0" in
+  */*)
+    _script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _script_dir=""
+    ;;
+  *)
+    _script_dir=""
+    ;;
+  esac
 
-  ZI_HOME="${ZI_HOME:-${ZDOTDIR:-${HOME}}/.zi}"
-  MOD_HOME="${MOD_HOME:-zmodules}/zpmod"
+  if [ -n "${_script_dir}" ] && [ -f "${_script_dir}/install_zpmod.sh" ]; then
+    _zpmod_sh="${_script_dir}/install_zpmod.sh"
+  else
+    _zpmod_sh="${WORKDIR}/install_zpmod.sh"
+    _zpmod_url="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/sh/install_zpmod.sh"
+    if command -v curl >/dev/null 2>&1; then
+      command curl -fsSL "${_zpmod_url}" -o "${_zpmod_sh}"
+    elif command -v wget >/dev/null 2>&1; then
+      command wget -qO "${_zpmod_sh}" "${_zpmod_url}"
+    else
+      printf '%s\n' "-- ERROR -- curl or wget is required to download install_zpmod.sh" >&2
+      exit 1
+    fi
+    if [ ! -s "${_zpmod_sh}" ]; then
+      printf '%s\n' "-- ERROR -- failed to download install_zpmod.sh" >&2
+      exit 1
+    fi
+    command chmod a+x "${_zpmod_sh}"
+  fi
 
-  printf '%s\n' "${col_info}Re-run this script to update (from Github) and rebuild the module.${col_rst}"
-  printf '%s\n' "${col_info2}Press any key to continue, or Ctrl-C to exit.${col_rst}"
-  read -r
-
-  SETUP_ZPMOD
-  BUILD_ZPMOD "$@"
+  exec sh "${_zpmod_sh}" "$@"
 }
 
 CLOSE_PROFILE() {
@@ -273,6 +227,4 @@ EOF
   exit 0
 }
 
-while true; do
-  MAIN "${@}"
-done
+MAIN "${@}"
