@@ -1,8 +1,8 @@
 #!/usr/bin/env zsh
+
 # Source: https://github.com/molovo/color
 # License: MIT — Copyright (c) 2015 Joe Letchford
 # Maintained by z-shell/src — https://github.com/z-shell/src
-#
 
 function color() {
   local color=$1 style=$2 b=0
