@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   checksum:
-    if: github.repository == 'z-shell/zi-src'
+    if: github.repository == 'z-shell/src'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
