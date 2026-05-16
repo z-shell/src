@@ -58,7 +58,7 @@ if [ -z "${ZI_BIN_DIR_NAME-}" ]; then
 fi
 
 if ! test -d "${ZI_HOME}"; then
-  command mkdir "${ZI_HOME}"
+  command mkdir -p "${ZI_HOME}"
   command chmod go-w "${ZI_HOME}"
 fi
 
