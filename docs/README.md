@@ -21,7 +21,7 @@
   <a target="_self" href="https://github.com/z-shell/zi-vim-syntax/">
     <img align="center" src="https://img.shields.io/badge/--019733?logo=vim" alt="VIM" />
   </a>
-  <a target="_self" href="https://open.vscode.dev/z-shell/zi-src/">
+  <a target="_self" href="https://open.vscode.dev/z-shell/src/">
     <img align="center" src="https://img.shields.io/badge/--007ACC?logo=visual%20studio%20code&logoColor=ffffff" alt="Visual Studio Code" />
   </a></p><hr />
 
@@ -38,7 +38,7 @@
 - IPFS:
   - https://ipfs.zshell.dev
 - jsDeliver:
-  - https://cdn.jsdelivr.net/gh/z-shell/zi-src@main/
+  - https://cdn.jsdelivr.net/gh/z-shell/src@main/
 
 ### Maintainer — Verify and Sync Loader
 

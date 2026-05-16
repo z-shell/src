@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'z-shell/zi-src'
+    if: github.repository == 'z-shell/src'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

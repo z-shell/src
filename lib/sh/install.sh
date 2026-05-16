@@ -40,9 +40,9 @@ if [ "${AOPT}" = loader ]; then
   ZI_CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/zi"
   command mkdir -p "${ZI_CONFIG_DIR}"
   if command -v curl >/dev/null 2>&1; then
-    command curl -fsSL https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh -o "${ZI_CONFIG_DIR}/init.zsh"
+    command curl -fsSL https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh -o "${ZI_CONFIG_DIR}/init.zsh"
   elif command -v wget >/dev/null 2>&1; then
-    command wget -qO "${ZI_CONFIG_DIR}/init.zsh" https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh
+    command wget -qO "${ZI_CONFIG_DIR}/init.zsh" https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh
   fi
   command chmod go-w "${ZI_CONFIG_DIR}" && command chmod a+x "${ZI_CONFIG_DIR}/init.zsh"
   # shellcheck disable=SC2016
@@ -91,7 +91,7 @@ else
   printf '%s\n' "[1;34m▓▒░[0m Installing [1;36m(z-shell/zi)[1;33m plugin manager[0m at [1;35m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
   { git clone --progress --depth=1 --branch "${BOPT}" https://github.com/z-shell/zi.git "${ZI_BIN_DIR_NAME}" \
     2>&1 | { /tmp/zi/git-process-output.zsh || cat; }; } 2>/dev/null
-  if [ -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}" ]; then
+  if [ -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}" ] && [ -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh" ]; then
     printf '%s\n' "[1;34m▓▒░[0m Successfully installed at [1;32m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m".
   else
     printf '%s\n' "[1;31m▓▒░[0m Something went wrong, couldn't install ZI at [1;33m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
@@ -181,7 +181,7 @@ ZPMOD_PROFILE() {
     _zpmod_sh="${_script_dir}/install_zpmod.sh"
   else
     _zpmod_sh="${WORKDIR}/install_zpmod.sh"
-    _zpmod_url="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/sh/install_zpmod.sh"
+    _zpmod_url="https://raw.githubusercontent.com/z-shell/src/main/lib/sh/install_zpmod.sh"
     if command -v curl >/dev/null 2>&1; then
       command curl -fsSL "${_zpmod_url}" -o "${_zpmod_sh}"
     elif command -v wget >/dev/null 2>&1; then

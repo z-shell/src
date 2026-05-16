@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   deploy:
-    if: github.repository == 'z-shell/zi-src'
+    if: github.repository == 'z-shell/src'
     environment:
       name: github-pages
     runs-on: ubuntu-latest

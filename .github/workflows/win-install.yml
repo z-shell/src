@@ -40,7 +40,7 @@ jobs:
       - name: 🪟 Set CRLF (Windows)
         run: |
           git config --global core.autocrlf input
-          git config --global --add safe.directory /cygdrive/d/a/zi-src/zi-src
+          git config --global --add safe.directory /cygdrive/d/a/src/src
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: 🪟 Dependencies (Windows)
         uses: egor-tensin/setup-cygwin@d2c752bab416d4b0662591bd366fc2686297c82d # v4.0.1
@@ -59,4 +59,14 @@ jobs:
           sh -x ./lib/sh/install.sh -- -a zunit
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
           sh -x ./lib/sh/install.sh -- -a zpmod
+        shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
+      - name: 🪟 Smoke-test — verify zi.zsh present
+        run: |
+          ZI_BIN="${XDG_DATA_HOME:-${HOME}/.local/share}/zi/bin"
+          if [ ! -f "${ZI_BIN}/zi.zsh" ]; then
+            printf '%s\n' "FAIL: zi.zsh not found at ${ZI_BIN}/zi.zsh"
+            exit 1
+          fi
+          printf '%s\n' "OK: zi.zsh found at ${ZI_BIN}/zi.zsh"
+          command rm -rf "${XDG_DATA_HOME:-${HOME}/.local/share}/zi" /home/runneradmin/.zi
         shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
