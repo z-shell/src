@@ -88,6 +88,10 @@ function _revolver_usage() {
 function _revolver_process() {
   local dir statefile state msg pid="$1" spinner_index=0
 
+  if [[ -z $pid || $pid != <-> ]]; then
+    exit 1
+  fi
+
   # Find the directory and load the statefile
   dir=${REVOLVER_DIR:-"${ZDOTDIR:-$HOME}/.revolver"}
   statefile="$dir/$pid"
