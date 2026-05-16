@@ -65,3 +65,5 @@ jobs:
           zmodload zi/zpmod
           zpmod source-study -l
         shell: zsh {0}
+      - name: "⚙️ Check: init.zsh sync drift"
+        run: sh lib/sh/sync-init.sh
