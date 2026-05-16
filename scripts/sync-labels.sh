@@ -12,8 +12,6 @@
 #   - gh CLI authenticated with repo scope
 #   - gh label create supports --force (gh >= 2.14)
 
-set -e
-
 OWNER="${1:-z-shell}"
 REPOS="${2:-$(dirname "$0")/repos.txt}"
 
