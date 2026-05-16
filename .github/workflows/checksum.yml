@@ -3,10 +3,10 @@ name: "🆗 Checksum"
 on:
   push:
     paths:
-      - "lib/sh/install_zpmod.sh"
-      - "lib/sh/install.sh"
-      - "lib/sh/sync-init.sh"
-      - "lib/zsh/init.zsh"
+      - "public/sh/install_zpmod.sh"
+      - "public/sh/install.sh"
+      - "public/sh/sync-init.sh"
+      - "public/zsh/init.zsh"
       - ".github/workflows/checksum.yml"
   workflow_dispatch: {}
 
@@ -28,15 +28,15 @@ jobs:
         uses: jmgilman/actions-generate-checksum@3ea6dc9bf8eecf28e2ecc982fab683484a1a8561 # v1.0.1
         with:
           patterns: |
-            lib/sh/install_zpmod.sh
-            lib/sh/install.sh
-            lib/sh/sync-init.sh
-            lib/zsh/init.zsh
-      - run: mv checksum.txt lib/
+            public/sh/install_zpmod.sh
+            public/sh/install.sh
+            public/sh/sync-init.sh
+            public/zsh/init.zsh
+      - run: mv checksum.txt public/
       - name: "🆗 Commit"
-        uses: z-shell/.github/actions/commit@d36763069484d7b5bf3d958e8517dbb682942c82 # v1.0.9
+        uses: z-shell/.github/actions/commit@3222f53692e448ed6e2caf8b8722e74fb2ca2461 # v1.1.1
         with:
           commitMessage: Checksum ${{ github.sha }}
-          workDir: lib
+          workDir: public
           commitUserName: ${{ secrets.ACTIONS_USER }}
           commitUserEmail: ${{ secrets.ACTIONS_MAIL }}

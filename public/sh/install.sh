@@ -40,9 +40,9 @@ if [ "${AOPT}" = loader ]; then
   ZI_CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/zi"
   command mkdir -p "${ZI_CONFIG_DIR}"
   if command -v curl >/dev/null 2>&1; then
-    command curl -fsSL https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh -o "${ZI_CONFIG_DIR}/init.zsh"
+    command curl -fsSL https://raw.githubusercontent.com/z-shell/zi-src/main/public/zsh/init.zsh -o "${ZI_CONFIG_DIR}/init.zsh"
   elif command -v wget >/dev/null 2>&1; then
-    command wget -qO "${ZI_CONFIG_DIR}/init.zsh" https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh
+    command wget -qO "${ZI_CONFIG_DIR}/init.zsh" https://raw.githubusercontent.com/z-shell/zi-src/main/public/zsh/init.zsh
   fi
   command chmod go-w "${ZI_CONFIG_DIR}" && command chmod a+x "${ZI_CONFIG_DIR}/init.zsh"
   # shellcheck disable=SC2016
@@ -71,12 +71,12 @@ fi
 if command -v curl >/dev/null 2>&1; then
   command mkdir -p /tmp/zi
   cd /tmp/zi || exit 1
-  command curl -fsSLO https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh &&
+  command curl -fsSLO https://raw.githubusercontent.com/z-shell/zi/main/public/zsh/git-process-output.zsh &&
     command chmod a+x /tmp/zi/git-process-output.zsh
 elif command -v wget >/dev/null 2>&1; then
   command mkdir -p /tmp/zi
   cd /tmp/zi || exit 1
-  command wget -q https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh &&
+  command wget -q https://raw.githubusercontent.com/z-shell/zi/main/public/zsh/git-process-output.zsh &&
     command chmod a+x /tmp/zi/git-process-output.zsh
 fi
 
@@ -181,7 +181,7 @@ ZPMOD_PROFILE() {
     _zpmod_sh="${_script_dir}/install_zpmod.sh"
   else
     _zpmod_sh="${WORKDIR}/install_zpmod.sh"
-    _zpmod_url="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/sh/install_zpmod.sh"
+    _zpmod_url="https://raw.githubusercontent.com/z-shell/zi-src/main/public/sh/install_zpmod.sh"
     if command -v curl >/dev/null 2>&1; then
       command curl -fsSL "${_zpmod_url}" -o "${_zpmod_sh}"
     elif command -v wget >/dev/null 2>&1; then

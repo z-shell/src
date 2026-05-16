@@ -57,7 +57,7 @@ _zi_setup() {
     [[ -d "$tmp_dir" ]] || command mkdir -p "$tmp_dir"
 
     show_process="${tmp_dir}/git-process.zsh"
-    process_url="https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh"
+    process_url="https://raw.githubusercontent.com/z-shell/zi/main/public/zsh/git-process-output.zsh"
 
     if [[ ! -f "$show_process" ]]; then
       if _zi_fetch "$process_url" > "${tmp_dir}/git-process.zsh"; then
