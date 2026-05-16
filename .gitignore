@@ -150,3 +150,7 @@ worker/
 node_modules/
 .pnpm-store/
 .cargo-ok
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.github/copilot-instructions.md

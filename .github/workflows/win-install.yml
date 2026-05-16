@@ -5,20 +5,28 @@ on:
   pull_request:
     paths:
       - "lib/sh/**"
+      - "lib/zsh/**"
+      - "tests/**"
       - ".github/workflows/win-install.yml"
   push:
     paths:
       - "lib/sh/**"
+      - "lib/zsh/**"
+      - "tests/**"
       - ".github/workflows/win-install.yml"
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   shellcheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: ☑️ ShellCheck
-        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: "./lib/sh"
   run-install:
@@ -32,22 +40,33 @@ jobs:
       - name: 🪟 Set CRLF (Windows)
         run: |
           git config --global core.autocrlf input
-          git config --global --add safe.directory /cygdrive/d/a/zi-src/zi-src
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+          git config --global --add safe.directory /cygdrive/d/a/src/src
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: 🪟 Dependencies (Windows)
-        uses: egor-tensin/setup-cygwin@d2c752bab416d4b0662591bd366fc2686297c82d # v4
+        uses: egor-tensin/setup-cygwin@d2c752bab416d4b0662591bd366fc2686297c82d # v4.0.1
         with:
           platform: x64
           packages: curl git zsh
       - name: 🪟 Run Install
         run: |
+          sh ./tests/installers.sh
           sh -x ./lib/sh/install.sh -- -i skip
-          command rm -rf /home/runneradmin/.zi
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
           sh -x ./lib/sh/install.sh -- -a annex
-          command rm -rf /home/runneradmin/.zi
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
           sh -x ./lib/sh/install.sh -- -a loader
-          command rm -rf /home/runneradmin/.zi
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
           sh -x ./lib/sh/install.sh -- -a zunit
-          command rm -rf /home/runneradmin/.zi
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
           sh -x ./lib/sh/install.sh -- -a zpmod
+        shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
+      - name: 🪟 Smoke-test — verify zi.zsh present
+        run: |
+          ZI_BIN="${XDG_DATA_HOME:-${HOME}/.local/share}/zi/bin"
+          if [ ! -f "${ZI_BIN}/zi.zsh" ]; then
+            printf '%s\n' "FAIL: zi.zsh not found at ${ZI_BIN}/zi.zsh"
+            exit 1
+          fi
+          printf '%s\n' "OK: zi.zsh found at ${ZI_BIN}/zi.zsh"
+          command rm -rf "${XDG_DATA_HOME:-${HOME}/.local/share}/zi" /home/runneradmin/.zi
         shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'

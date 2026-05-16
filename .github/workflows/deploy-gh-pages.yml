@@ -8,17 +8,35 @@ on:
     tags: ["v*.*.*"]
     paths:
       - "lib/**"
+      - ".github/workflows/deploy-gh-pages.yml"
+
+permissions:
+  contents: write
 
 jobs:
   deploy:
+    if: github.repository == 'z-shell/src'
     environment:
       name: github-pages
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
     steps:
       - name: ⤵️ Check out code from GitHub
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: "🏷 Prepare deployment metadata"
+        id: prepare_deploy
+        run: |
+          commit_message="$(jq -r '.head_commit.message // empty' "$GITHUB_EVENT_PATH")"
+          if [ -z "$commit_message" ]; then
+            commit_message="Deploy ${GITHUB_REF_NAME}"
+          fi
+          {
+            echo "commit_message<<DEPLOY_MESSAGE"
+            printf '%s\n' "$commit_message"
+            echo "DEPLOY_MESSAGE"
+          } >> "$GITHUB_OUTPUT"
       - name: "🏷 Prepare tag"
         id: prepare_tag
         if: startsWith(github.ref, 'refs/tags/')
@@ -34,6 +52,6 @@ jobs:
           publish_dir: ./lib
           user_name: ${{ secrets.ACTIONS_USER }}
           user_email: ${{ secrets.ACTIONS_MAIL }}
-          commit_message: ${{ github.event.head_commit.message }}
+          commit_message: ${{ steps.prepare_deploy.outputs.commit_message }}
           tag_name: ${{ steps.prepare_tag.outputs.deploy_tag_name }}
           tag_message: "Deployment ${{ steps.prepare_tag.outputs.tag_name }}"
