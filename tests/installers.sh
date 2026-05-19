@@ -190,6 +190,22 @@ test_loader_install() {
   pass "loader install uses XDG paths and branch override"
 }
 
+test_xdg_data_home_install() {
+  home="${TMP_ROOT}/default-home"
+  data="${TMP_ROOT}/missing-root/data-home"
+  command mkdir -p "${home}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null
+
+  [ -f "${data}/zi/bin/zi.zsh" ] || fail "install did not create the XDG data home"
+  pass "XDG data home install creates parent directories"
+}
+
 test_standalone_zpmod_delegation() {
   standalone_dir="${TMP_ROOT}/standalone"
   home="${TMP_ROOT}/zpmod-home"
@@ -247,5 +263,6 @@ check_syntax
 check_checksums
 write_fake_tools
 test_loader_install
+test_xdg_data_home_install
 test_standalone_zpmod_delegation
 test_sync_init

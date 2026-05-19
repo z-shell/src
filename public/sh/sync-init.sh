@@ -29,8 +29,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 DEFAULT_LOCAL="${REPO_ROOT}/public/zsh/init.zsh"
-DEFAULT_REMOTE="https://raw.githubusercontent.com/z-shell/zi-src/main/public/zsh/init.zsh"
-DEFAULT_CHECKSUM_URL="https://raw.githubusercontent.com/z-shell/zi-src/main/public/checksum.txt"
+DEFAULT_REMOTE="https://raw.githubusercontent.com/z-shell/src/main/public/zsh/init.zsh"
+DEFAULT_CHECKSUM_URL="https://raw.githubusercontent.com/z-shell/src/main/public/checksum.txt"
 CHECKSUM_KEY="public/zsh/init.zsh"
 
 OPT_LOCAL="${DEFAULT_LOCAL}"
@@ -63,19 +63,59 @@ Exit codes:
 EOF
 }
 
+_fetch_url() {
+  _url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    command curl -fsSL "${_url}"
+  elif command -v wget >/dev/null 2>&1; then
+    command wget -qO- "${_url}"
+  else
+    printf '%s\n' "[1;31m▓▒░[0m No curl or wget available." >&2
+    return 1
+  fi
+}
+
+_legacy_url() {
+  _url="$1"
+  case "${_url}" in
+  https://raw.githubusercontent.com/z-shell/src/main/public/*)
+    printf '%s\n' "https://raw.githubusercontent.com/z-shell/src/main/lib/${_url#https://raw.githubusercontent.com/z-shell/src/main/public/}"
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
 # Fetch a URL or copy a local readable path to stdout.
 _fetch() {
   _src="$1"
+  _legacy_src=""
+  _fetch_status=0
   case "${_src}" in
   http://* | https://*)
-    if command -v curl >/dev/null 2>&1; then
-      command curl -fsSL "${_src}"
-    elif command -v wget >/dev/null 2>&1; then
-      command wget -qO- "${_src}"
-    else
-      printf '%s\n' "[1;31m▓▒░[0m No curl or wget available." >&2
-      return 1
+    set +e
+    _fetch_url "${_src}"
+    _fetch_status=$?
+    set -e
+    if [ "${_fetch_status}" -eq 0 ]; then
+      return 0
     fi
+    set +e
+    _legacy_src="$(_legacy_url "${_src}" 2>/dev/null)"
+    _legacy_status=$?
+    set -e
+    if [ "${_legacy_status}" -eq 0 ] && [ -n "${_legacy_src}" ]; then
+      set +e
+      _fetch_url "${_legacy_src}"
+      _fetch_status=$?
+      set -e
+      if [ "${_fetch_status}" -eq 0 ]; then
+        return 0
+      fi
+    fi
+    printf '%s\n' "[1;31m▓▒░[0m Failed to fetch: ${_src}" >&2
+    return 1
     ;;
   *)
     if [ -r "${_src}" ]; then
