@@ -47,11 +47,11 @@ sha256_file() {
 }
 
 check_syntax() {
-  sh -n "${ROOT}/lib/sh/install.sh"
-  sh -n "${ROOT}/lib/sh/install_zpmod.sh"
-  sh -n "${ROOT}/lib/sh/sync-init.sh"
+  sh -n "${ROOT}/public/sh/install.sh"
+  sh -n "${ROOT}/public/sh/install_zpmod.sh"
+  sh -n "${ROOT}/public/sh/sync-init.sh"
   command -v zsh >/dev/null 2>&1 || fail "zsh is required for init.zsh syntax checks"
-  zsh -n "${ROOT}/lib/zsh/init.zsh"
+  zsh -n "${ROOT}/public/zsh/init.zsh"
   pass "script syntax"
 }
 
@@ -60,7 +60,7 @@ check_checksums() {
     [ -n "${expected}" ] || continue
     actual="$(sha256_file "${ROOT}/${path}")"
     [ "${actual}" = "${expected}" ] || fail "checksum mismatch for ${path}"
-  done <"${ROOT}/lib/checksum.txt"
+  done <"${ROOT}/public/checksum.txt"
   pass "checksums"
 }
 
@@ -104,11 +104,11 @@ if [ -z "${out}" ] && [ "${remote_name}" -eq 1 ]; then
 fi
 
 case "${url}" in
-  */lib/zsh/init.zsh)
+  */public/zsh/init.zsh)
     if [ -n "${out}" ]; then
-      cp "${ZI_SRC_TEST_ROOT}/lib/zsh/init.zsh" "${out}"
+      cp "${ZI_SRC_TEST_ROOT}/public/zsh/init.zsh" "${out}"
     else
-      cat "${ZI_SRC_TEST_ROOT}/lib/zsh/init.zsh"
+      cat "${ZI_SRC_TEST_ROOT}/public/zsh/init.zsh"
     fi
     ;;
   */git-process-output.zsh)
@@ -119,7 +119,7 @@ cat
 SCRIPT
     chmod a+x "${out}"
     ;;
-  */lib/sh/install_zpmod.sh)
+  */public/sh/install_zpmod.sh)
     [ -n "${out}" ] || { printf '%s\n' "curl test double: missing output path" >&2; exit 64; }
     cat > "${out}" <<'SCRIPT'
 #!/usr/bin/env sh
@@ -180,7 +180,7 @@ test_loader_install() {
     XDG_DATA_HOME="${data}" \
     ZI_SRC_TEST_ROOT="${ROOT}" \
     PATH="${FAKE_BIN}:${PATH}" \
-    sh "${ROOT}/lib/sh/install.sh" -a loader -b feature/test >/dev/null
+    sh "${ROOT}/public/sh/install.sh" -a loader -b feature/test >/dev/null
 
   # shellcheck disable=SC2016
   contains "${config}/zi/init.zsh" ': ${ZI[STREAM]:="feature/test"}'
@@ -196,7 +196,7 @@ test_standalone_zpmod_delegation() {
   data="${TMP_ROOT}/zpmod-data"
   marker="${TMP_ROOT}/zpmod-marker"
   command mkdir -p "${standalone_dir}" "${home}" "${data}"
-  command cp "${ROOT}/lib/sh/install.sh" "${standalone_dir}/install.sh"
+  command cp "${ROOT}/public/sh/install.sh" "${standalone_dir}/install.sh"
 
   HOME="${home}" \
     ZDOTDIR="${home}" \
@@ -218,22 +218,22 @@ test_sync_init() {
   printf '%s\n' '# remote init fixture' >"${remote_file}"
   command cp "${remote_file}" "${local_file}"
   remote_hash="$(sha256_file "${remote_file}")"
-  printf '%s  %s\n' "${remote_hash}" 'lib/zsh/init.zsh' >"${checksum_file}"
+  printf '%s  %s\n' "${remote_hash}" 'public/zsh/init.zsh' >"${checksum_file}"
 
-  sh "${ROOT}/lib/sh/sync-init.sh" \
+  sh "${ROOT}/public/sh/sync-init.sh" \
     --local "${local_file}" \
     --remote "${remote_file}" \
     --checksum-url "${checksum_file}" >/dev/null
 
   printf '%s\n' '# stale init fixture' >"${local_file}"
-  if sh "${ROOT}/lib/sh/sync-init.sh" \
+  if sh "${ROOT}/public/sh/sync-init.sh" \
     --local "${local_file}" \
     --remote "${remote_file}" \
     --checksum-url "${checksum_file}" >/dev/null 2>&1; then
     fail "sync-init mismatch check unexpectedly succeeded"
   fi
 
-  sh "${ROOT}/lib/sh/sync-init.sh" \
+  sh "${ROOT}/public/sh/sync-init.sh" \
     --write \
     --local "${local_file}" \
     --remote "${remote_file}" \

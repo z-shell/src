@@ -42,22 +42,22 @@
 
 ### Maintainer — Verify and Sync Loader
 
-Check whether the local `lib/zsh/init.zsh` matches the canonical GitHub raw `main` copy:
+Check whether the local `public/zsh/init.zsh` matches the canonical GitHub raw `main` copy:
 
 ```sh
-sh lib/sh/sync-init.sh
+sh public/sh/sync-init.sh
 ```
 
 Replace the local file if it drifts:
 
 ```sh
-sh lib/sh/sync-init.sh --write
+sh public/sh/sync-init.sh --write
 ```
 
 Run against local fixtures (no network required, useful in tests):
 
 ```sh
-sh lib/sh/sync-init.sh \
+sh public/sh/sync-init.sh \
   --local  /tmp/my-init.zsh \
   --remote /tmp/remote-init.zsh \
   --checksum-url /tmp/checksum.txt
@@ -66,5 +66,9 @@ sh lib/sh/sync-init.sh \
 Skip checksum validation:
 
 ```sh
-sh lib/sh/sync-init.sh --no-checksum
+sh public/sh/sync-init.sh --no-checksum
 ```
+
+---
+
+> This repository is compatible with [Zi](https://github.com/z-shell/zi)

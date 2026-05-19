@@ -2,14 +2,14 @@
 # -*- mode: sh; sh-indentation: 2; indent-tabs-mode: nil; sh-basic-offset: 2; -*-
 # vim: ft=sh sw=2 ts=2 et
 #
-# sync-init.sh — verify and optionally sync local lib/zsh/init.zsh with remote.
+# sync-init.sh — verify and optionally sync local public/zsh/init.zsh with remote.
 #
 # Usage:
-#   sh lib/sh/sync-init.sh [OPTIONS]
+#   sh public/sh/sync-init.sh [OPTIONS]
 #
 # Options:
 #   --write                  Replace local file with remote copy (requires valid checksum)
-#   --local PATH             Local file to compare (default: lib/zsh/init.zsh)
+#   --local PATH             Local file to compare (default: public/zsh/init.zsh)
 #   --remote URL|PATH        Remote URL or local path (default: GitHub raw main)
 #   --checksum-url URL|PATH  Checksum.txt URL or path (default: GitHub raw main)
 #   --no-checksum            Skip checksum validation of remote content
@@ -28,10 +28,10 @@ trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-DEFAULT_LOCAL="${REPO_ROOT}/lib/zsh/init.zsh"
-DEFAULT_REMOTE="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh"
-DEFAULT_CHECKSUM_URL="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/checksum.txt"
-CHECKSUM_KEY="lib/zsh/init.zsh"
+DEFAULT_LOCAL="${REPO_ROOT}/public/zsh/init.zsh"
+DEFAULT_REMOTE="https://raw.githubusercontent.com/z-shell/zi-src/main/public/zsh/init.zsh"
+DEFAULT_CHECKSUM_URL="https://raw.githubusercontent.com/z-shell/zi-src/main/public/checksum.txt"
+CHECKSUM_KEY="public/zsh/init.zsh"
 
 OPT_LOCAL="${DEFAULT_LOCAL}"
 OPT_REMOTE="${DEFAULT_REMOTE}"
@@ -43,14 +43,14 @@ OPT_NO_CHECKSUM=0
 
 print_help() {
   cat <<EOF
-Usage: sh lib/sh/sync-init.sh [OPTIONS]
+Usage: sh public/sh/sync-init.sh [OPTIONS]
 
-Verify local lib/zsh/init.zsh against the canonical GitHub raw main copy.
+Verify local public/zsh/init.zsh against the canonical GitHub raw main copy.
 By default, reports mismatches only. Use --write to update the local file.
 
 Options:
   --write                  Replace local file with remote (requires valid checksum)
-  --local PATH             Local file to compare [default: lib/zsh/init.zsh]
+  --local PATH             Local file to compare [default: public/zsh/init.zsh]
   --remote URL|PATH        Remote URL or local path [default: GitHub raw main]
   --checksum-url URL|PATH  Checksum URL or path [default: GitHub raw main checksum.txt]
   --no-checksum            Skip checksum validation of remote content
