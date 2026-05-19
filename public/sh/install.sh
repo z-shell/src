@@ -252,7 +252,10 @@ ZPMOD_PROFILE() {
     command chmod a+x "${_zpmod_sh}"
   fi
 
-  exec sh "${_zpmod_sh}" "$@"
+  if [ "$#" -gt 0 ]; then
+    exec sh "${_zpmod_sh}" "$@"
+  fi
+  exec sh "${_zpmod_sh}"
 }
 
 CLOSE_PROFILE() {
@@ -266,7 +269,11 @@ CLOSE_PROFILE() {
 
 MAIN() {
   if [ "${AOPT}" = zpmod ]; then
-    ZPMOD_PROFILE "$@"
+    if [ "$#" -gt 0 ]; then
+      ZPMOD_PROFILE "$@"
+    else
+      ZPMOD_PROFILE
+    fi
   else
     MAIN_PROFILE
     ANNEX_PROFILE
@@ -282,4 +289,8 @@ EOF
   exit 0
 }
 
-MAIN "${@}"
+if [ "$#" -gt 0 ]; then
+  MAIN "$@"
+else
+  MAIN
+fi
