@@ -124,10 +124,20 @@ MAIN() {
   col_info2="[32m"
   col_rst="[0m"
 
-  setup_environment "$@"
-  setup_zpmod_repository "$@"
-  build_zpmod_module "$@"
+  if [ "$#" -gt 0 ]; then
+    setup_environment "$@"
+    setup_zpmod_repository "$@"
+    build_zpmod_module "$@"
+  else
+    setup_environment
+    setup_zpmod_repository
+    build_zpmod_module
+  fi
   exit 0
 }
 
-MAIN "${@}"
+if [ "$#" -gt 0 ]; then
+  MAIN "$@"
+else
+  MAIN
+fi
