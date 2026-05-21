@@ -1,5 +1,5 @@
 ---
-name: ⚙️ Windows Install
+name: Windows Install
 
 on:
   pull_request:

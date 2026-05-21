@@ -1,5 +1,5 @@
 ---
-name: "🆗 Checksum"
+name: Checksum
 on:
   push:
     paths:

@@ -1,5 +1,5 @@
 ---
-name: 🐧 Check (Linux)
+name: Check (Linux)
 on:
   push:
     branches: [main]
