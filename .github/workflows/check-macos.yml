@@ -5,15 +5,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "lib/sh/**"
-      - "lib/zsh/**"
+      - "public/sh/**"
+      - "public/zsh/**"
       - "tests/**"
       - ".github/workflows/check-macos.yml"
   pull_request:
     branches: [main]
     paths:
-      - "lib/sh/**"
-      - "lib/zsh/**"
+      - "public/sh/**"
+      - "public/zsh/**"
       - "tests/**"
       - ".github/workflows/check-macos.yml"
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
       - name: ☑️ ShellCheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
-          scandir: "./lib/sh"
+          scandir: "./public/sh"
 
   build:
     runs-on: macos-latest
@@ -50,15 +50,15 @@ jobs:
       - name: "⚙️ Check: unit fixtures"
         run: sh ./tests/installers.sh
       - name: "⚙️  Check: install.sh -- -i skip"
-        run: sh -x ./lib/sh/install.sh -- -i skip; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+        run: sh -x ./public/sh/install.sh -- -i skip; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️  Check: install.sh -- -a annex"
-        run: sh -x ./lib/sh/install.sh -- -a annex; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+        run: sh -x ./public/sh/install.sh -- -a annex; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️  Check: install.sh -- -a loader"
-        run: sh -x ./lib/sh/install.sh -- -a loader; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+        run: sh -x ./public/sh/install.sh -- -a loader; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️  Check: install.sh -- -a zunit"
-        run: sh -x ./lib/sh/install.sh -- -a zunit; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+        run: sh -x ./public/sh/install.sh -- -a zunit; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️ Check: install_zpmod.sh"
-        run: sh -x ./lib/sh/install_zpmod.sh
+        run: sh -x ./public/sh/install_zpmod.sh
       - name: ⚙️ Load zpmod module
         run: |
           module_path+=( "${XDG_DATA_HOME:-$HOME/.local/share}/zi/zmodules/zpmod/Src" )

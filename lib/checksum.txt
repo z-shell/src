@@ -1,4 +1,0 @@
-5d8fdd881b84548f38c1d5ffc6d5f46a18919d8dd6c1398d69abe055dd76ef98 lib/sh/install_zpmod.sh
-eb744a0aa3d03c4c2a6c9cfb5b9088389ce4bc9027d272dfd0b52dbb7b04e348 lib/sh/install.sh
-83d9f0dc013376b5aa03b7a11f3908058da176df3407ac6e2872857d7c9658fd lib/sh/sync-init.sh
-66dc5bb0575d44e4e1192e229204abe1ac47979a05ee3c3bb23afc2b9b493637 lib/zsh/init.zsh

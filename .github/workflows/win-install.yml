@@ -4,14 +4,14 @@ name: ⚙️ Windows Install
 on:
   pull_request:
     paths:
-      - "lib/sh/**"
-      - "lib/zsh/**"
+      - "public/sh/**"
+      - "public/zsh/**"
       - "tests/**"
       - ".github/workflows/win-install.yml"
   push:
     paths:
-      - "lib/sh/**"
-      - "lib/zsh/**"
+      - "public/sh/**"
+      - "public/zsh/**"
       - "tests/**"
       - ".github/workflows/win-install.yml"
   workflow_dispatch: {}
@@ -28,7 +28,7 @@ jobs:
       - name: ☑️ ShellCheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
-          scandir: "./lib/sh"
+          scandir: "./public/sh"
   run-install:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -50,15 +50,15 @@ jobs:
       - name: 🪟 Run Install
         run: |
           sh ./tests/installers.sh
-          sh -x ./lib/sh/install.sh -- -i skip
+          sh -x ./public/sh/install.sh -- -i skip
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./lib/sh/install.sh -- -a annex
+          sh -x ./public/sh/install.sh -- -a annex
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./lib/sh/install.sh -- -a loader
+          sh -x ./public/sh/install.sh -- -a loader
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./lib/sh/install.sh -- -a zunit
+          sh -x ./public/sh/install.sh -- -a zunit
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./lib/sh/install.sh -- -a zpmod
+          sh -x ./public/sh/install.sh -- -a zpmod
         shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
       - name: 🪟 Smoke-test — verify zi.zsh present
         run: |
