@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   shellcheck:
     runs-on: ubuntu-latest
@@ -33,9 +37,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     needs: [shellcheck]
-    concurrency:
-      group: ci-${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       - name: 🪟 Set CRLF (Windows)
         run: |
