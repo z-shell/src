@@ -159,9 +159,11 @@ if test -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}/.git"; then
   _zi_valid=0
   if test -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh"; then
     _zi_remote="$(command git -C "${ZI_HOME}/${ZI_BIN_DIR_NAME}" remote get-url origin 2>/dev/null || true)"
-    if printf '%s\n' "${_zi_remote}" | grep -q 'github\.com[/:]z-shell/zi'; then
-      _zi_valid=1
-    fi
+    case "${_zi_remote}" in
+      https://github.com/z-shell/zi | https://github.com/z-shell/zi.git | \
+      git@github.com:z-shell/zi | git@github.com:z-shell/zi.git)
+        _zi_valid=1 ;;
+    esac
   fi
   if [ "${_zi_valid}" -ne 1 ]; then
     printf '%s\n' "[1;31m▓▒░[0m ${ZI_HOME}/${ZI_BIN_DIR_NAME} contains a .git directory but does not appear to be a zi repository." >&2
