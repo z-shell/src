@@ -139,6 +139,11 @@ EOF
 #!/usr/bin/env sh
 set -eu
 
+# Strip -C <dir> flag if present (used by install.sh to check remote URL)
+if [ "${1:-}" = "-C" ]; then
+  shift 2
+fi
+
 cmd="${1:-}"
 [ "$#" -gt 0 ] && shift
 
@@ -157,6 +162,11 @@ case "${cmd}" in
     ;;
   log)
     printf '%s\n' 'abcdef0 - fake zi commit (now) <test>'
+    ;;
+  remote)
+    # Handle: remote get-url origin
+    # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var
+    printf '%s\n' "${ZI_SRC_TEST_FAKE_REMOTE:-https://github.com/z-shell/zi}"
     ;;
   *)
     printf '%s\n' "git test double: unexpected command ${cmd}" >&2
@@ -226,6 +236,66 @@ test_standalone_zpmod_delegation() {
   pass "standalone install.sh fetches zpmod helper"
 }
 
+test_update_valid_zi_clone() {
+  home="${TMP_ROOT}/update-valid-home"
+  data="${TMP_ROOT}/update-valid-data"
+  zi_bin="${data}/zi/bin"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null
+
+  pass "update path accepts a valid zi clone"
+}
+
+test_update_rejects_foreign_repo() {
+  home="${TMP_ROOT}/update-foreign-home"
+  data="${TMP_ROOT}/update-foreign-data"
+  zi_bin="${data}/zi/bin"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  # Deliberately no zi.zsh: this simulates an unrelated git repo
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>&1
+  _exit_code="$?"
+  set -e
+
+  [ "${_exit_code}" -ne 0 ] || fail "install.sh should have rejected a foreign git repository"
+  pass "update path rejects an unrecognised git repository"
+}
+
+test_update_rejects_wrong_remote() {
+  home="${TMP_ROOT}/update-wrong-remote-home"
+  data="${TMP_ROOT}/update-wrong-remote-data"
+  zi_bin="${data}/zi/bin"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    ZI_SRC_TEST_FAKE_REMOTE="https://github.com/unrelated/project" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>&1
+  _exit_code="$?"
+  set -e
+
+  [ "${_exit_code}" -ne 0 ] || fail "install.sh should have rejected a repo with a non-zi remote"
+  pass "update path rejects a repository with a non-zi remote origin"
+}
+
 test_sync_init() {
   local_file="${TMP_ROOT}/local-init.zsh"
   remote_file="${TMP_ROOT}/remote-init.zsh"
@@ -265,4 +335,7 @@ write_fake_tools
 test_loader_install
 test_xdg_data_home_install
 test_standalone_zpmod_delegation
+test_update_valid_zi_clone
+test_update_rejects_foreign_repo
+test_update_rejects_wrong_remote
 test_sync_init

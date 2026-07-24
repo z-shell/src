@@ -36,6 +36,14 @@ while getopts ":i:a:b:" opt; do
 done
 shift $((OPTIND - 1))
 
+# Validate BOPT to prevent sed delimiter injection
+case "${BOPT}" in
+  *'|'* | *'\'* | *'&'*)
+    printf '%s\n' "-- ERROR -- Invalid -b value: branch name must not contain '|', '\\', or '&'." >&2
+    exit 1
+    ;;
+esac
+
 SCRIPT_DIR=""
 LOCAL_INIT_ZSH=""
 LOCAL_INSTALL_ZPMOD=""
@@ -147,6 +155,18 @@ fi
 command chmod a+x /tmp/zi/git-process-output.zsh
 
 if test -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}/.git"; then
+  _zi_valid=0
+  if test -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh"; then
+    _zi_remote="$(command git -C "${ZI_HOME}/${ZI_BIN_DIR_NAME}" remote get-url origin 2>/dev/null || true)"
+    if printf '%s\n' "${_zi_remote}" | grep -q 'z-shell/zi'; then
+      _zi_valid=1
+    fi
+  fi
+  if [ "${_zi_valid}" -ne 1 ]; then
+    printf '%s\n' "[1;31m▓▒░[0m ${ZI_HOME}/${ZI_BIN_DIR_NAME} contains a .git directory but does not appear to be a zi repository." >&2
+    printf '%s\n' "[1;31m▓▒░[0m Expected zi.zsh and a z-shell/zi remote origin. Unset ZI_HOME/ZI_BIN_DIR_NAME or remove the directory to install fresh." >&2
+    exit 1
+  fi
   cd "${ZI_HOME}/${ZI_BIN_DIR_NAME}" || exit 1
   printf '%s\n' "[1;34m▓▒░[0m Updating [1;36m(z-shell/zi)[1;33m plugin manager[0m at [1;35m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
   command git clean -d -f -f
