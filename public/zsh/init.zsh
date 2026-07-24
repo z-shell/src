@@ -119,7 +119,11 @@ _zi_pmod() {
 # Register Zi completion if the completion system is active.
 _zi_comps() {
   builtin emulate -L zsh
+  local _zi_compl_dir="${ZI[BIN_DIR]}/lib"
   if (( ${+_comps} )); then
+    if [[ -d "${_zi_compl_dir}" ]] && (( ! ${fpath[(Ie)${_zi_compl_dir}]} )); then
+      fpath=( "${_zi_compl_dir}" "${fpath[@]}" )
+    fi
     (( ${+_comps[zi]} )) || _comps[zi]=_zi
   fi
   return 0
