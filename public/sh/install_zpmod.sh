@@ -124,10 +124,24 @@ MAIN() {
   col_info2="[32m"
   col_rst="[0m"
 
-  setup_environment "$@"
-  setup_zpmod_repository "$@"
-  build_zpmod_module "$@"
+  if [ "$#" -gt 0 ]; then
+    setup_environment "$@"
+    setup_zpmod_repository "$@"
+    build_zpmod_module "$@"
+  else
+    setup_environment
+    setup_zpmod_repository
+    build_zpmod_module
+  fi
   exit 0
 }
 
+<<<<<<< HEAD:lib/sh/install_zpmod.sh
 MAIN "${@}"
+=======
+if [ "$#" -gt 0 ]; then
+  MAIN "$@"
+else
+  MAIN
+fi
+>>>>>>> origin/main:public/sh/install_zpmod.sh
