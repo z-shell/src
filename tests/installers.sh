@@ -164,9 +164,9 @@ case "${cmd}" in
     printf '%s\n' 'abcdef0 - fake zi commit (now) <test>'
     ;;
   remote)
-    # Handle: remote get-url origin
+    # After -C strip (if any) and cmd shift, $1/$2 hold the remote subcommand args
     if [ "${1:-}" != "get-url" ] || [ "${2:-}" != "origin" ]; then
-      printf '%s\n' "git test double: expected 'remote get-url origin', got: remote ${1:-} ${2:-}" >&2
+      printf '%s\n' "git test double: 'remote' subcommand must be 'get-url origin'" >&2
       exit 65
     fi
     # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var
