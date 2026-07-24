@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: ☑️ ShellCheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
@@ -41,9 +41,9 @@ jobs:
         run: |
           git config --global core.autocrlf input
           git config --global --add safe.directory /cygdrive/d/a/src/src
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 🪟 Dependencies (Windows)
-        uses: egor-tensin/setup-cygwin@d2c752bab416d4b0662591bd366fc2686297c82d # v4.0.1
+        uses: egor-tensin/setup-cygwin@fca9069f92361187d4abfaa5d8a7490e435d8349 # v4.0.2
         with:
           platform: x64
           packages: curl git zsh

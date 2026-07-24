@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: "🆗 Generate checksum"
         uses: jmgilman/actions-generate-checksum@3ea6dc9bf8eecf28e2ecc982fab683484a1a8561 # v1.0.1
         with:
@@ -34,7 +34,7 @@ jobs:
             lib/zsh/init.zsh
       - run: mv checksum.txt lib/
       - name: "🆗 Commit"
-        uses: z-shell/.github/actions/commit@91068ee88e8788deff439d6ee36b77329edeb98a # v1.0.8
+        uses: z-shell/.github/actions/commit@3222f53692e448ed6e2caf8b8722e74fb2ca2461 # v1.1.1
         with:
           commitMessage: Checksum ${{ github.sha }}
           workDir: lib
