@@ -166,10 +166,8 @@ case "${cmd}" in
     ;;
   remote)
     # After -C strip (if any) and cmd shift, $1/$2 hold the remote subcommand args
-    _sub="${1:-}"
-    _arg="${2:-}"
-    if [ "${_sub}" != "get-url" ] || [ "${_arg}" != "origin" ]; then
-      printf '%s\n' "git test double: expected 'remote get-url origin', got 'remote ${_sub} ${_arg}'" >&2
+    if [ "${1:-}" != "get-url" ] || [ "${2:-}" != "origin" ]; then
+      printf '%s\n' "git test double: expected 'remote get-url origin', got 'remote ${1:-} ${2:-}'" >&2
       exit 65
     fi
     # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var

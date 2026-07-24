@@ -160,10 +160,10 @@ if test -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}/.git"; then
   _zi_valid=0
   if test -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh"; then
     _zi_remote="$(command git -C "${ZI_HOME}/${ZI_BIN_DIR_NAME}" remote get-url origin 2>/dev/null || true)"
-    # Canonical zi remote URLs from https://github.com/z-shell/zi
+    # Canonical zi remote URLs (HTTPS and SSH, with and without .git suffix)
     case "${_zi_remote}" in
-      https://github.com/z-shell/zi | https://github.com/z-shell/zi.git | \
-      git@github.com:z-shell/zi | git@github.com:z-shell/zi.git)
+      https://github.com/z-shell/zi | https://github.com/z-shell/zi.git \
+      | git@github.com:z-shell/zi | git@github.com:z-shell/zi.git)
         _zi_valid=1 ;;
     esac
   fi
