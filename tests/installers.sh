@@ -141,6 +141,7 @@ set -eu
 
 # Strip -C <dir> flag if present (used by install.sh to check remote URL)
 if [ "${1:-}" = "-C" ]; then
+  [ -n "${2:-}" ] || { printf '%s\n' "git test double: -C requires a directory argument" >&2; exit 64; }
   shift 2
 fi
 
@@ -165,8 +166,10 @@ case "${cmd}" in
     ;;
   remote)
     # After -C strip (if any) and cmd shift, $1/$2 hold the remote subcommand args
-    if [ "${1:-}" != "get-url" ] || [ "${2:-}" != "origin" ]; then
-      printf '%s\n' "git test double: 'remote' subcommand must be 'get-url origin'" >&2
+    _sub="${1:-}"
+    _arg="${2:-}"
+    if [ "${_sub}" != "get-url" ] || [ "${_arg}" != "origin" ]; then
+      printf '%s\n' "git test double: expected 'remote get-url origin', got 'remote ${_sub} ${_arg}'" >&2
       exit 65
     fi
     # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var

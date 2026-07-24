@@ -36,8 +36,9 @@ while getopts ":i:a:b:" opt; do
 done
 shift $((OPTIND - 1))
 
-# Validate BOPT to prevent sed delimiter injection when building init.zsh;
-# *\\* in the case pattern matches strings containing a single literal backslash.
+# Validate BOPT to prevent sed delimiter injection when building init.zsh.
+# | is the sed delimiter used in the substitution; \ and & are special in
+# sed replacement expressions. *\\* in the case pattern matches a single \.
 case "${BOPT}" in
   *'|'* | *\\* | *'&'*)
     printf '%s\n' "-- ERROR -- Invalid -b value: branch name must not contain '|', '\\', or '&'." >&2
