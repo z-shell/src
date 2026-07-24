@@ -22,7 +22,7 @@
 
 set -eu
 
-WORKDIR="$(mktemp -d)" || exit 1
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-sync.XXXXXX")" || exit 1
 trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -70,7 +70,7 @@ _fetch_url() {
   elif command -v wget >/dev/null 2>&1; then
     command wget -qO- "${_url}"
   else
-    printf '%s\n' "[1;31m▓▒░[0m No curl or wget available." >&2
+    printf '%b\n' "[1;31m▓▒░[0m No curl or wget available." >&2
     return 1
   fi
 }
@@ -114,14 +114,14 @@ _fetch() {
         return 0
       fi
     fi
-    printf '%s\n' "[1;31m▓▒░[0m Failed to fetch: ${_src}" >&2
+    printf '%b\n' "[1;31m▓▒░[0m Failed to fetch: ${_src}" >&2
     return 1
     ;;
   *)
     if [ -r "${_src}" ]; then
       command cat "${_src}"
     else
-      printf '%s\n' "[1;31m▓▒░[0m Cannot read local path: ${_src}" >&2
+      printf '%b\n' "[1;31m▓▒░[0m Cannot read local path: ${_src}" >&2
       return 1
     fi
     ;;
@@ -136,7 +136,7 @@ _sha256() {
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "${_file}" | command awk '{print $1}'
   else
-    printf '%s\n' "[1;31m▓▒░[0m No sha256sum or shasum available." >&2
+    printf '%b\n' "[1;31m▓▒░[0m No sha256sum or shasum available." >&2
     return 1
   fi
 }
@@ -191,8 +191,8 @@ done
 # ── Validate Inputs ───────────────────────────────────────────────────────────
 
 if [ ! -f "${OPT_LOCAL}" ] && [ "${OPT_WRITE}" -eq 0 ]; then
-  printf '%s\n' "[1;31m▓▒░[0m Local file not found: ${OPT_LOCAL}" >&2
-  printf '%s\n' "[1;33m▓▒░[0m Use --write to create it from remote." >&2
+  printf '%b\n' "[1;31m▓▒░[0m Local file not found: ${OPT_LOCAL}" >&2
+  printf '%b\n' "[1;33m▓▒░[0m Use --write to create it from remote." >&2
   exit 1
 fi
 
@@ -202,7 +202,7 @@ REMOTE_FILE="${WORKDIR}/remote-init.zsh"
 printf '%s\n' "▓▒░ Fetching remote: ${OPT_REMOTE}"
 # shellcheck disable=SC2310
 if ! _fetch "${OPT_REMOTE}" >"${REMOTE_FILE}"; then
-  printf '%s\n' "[1;31m▓▒░[0m Failed to fetch remote file." >&2
+  printf '%b\n' "[1;31m▓▒░[0m Failed to fetch remote file." >&2
   exit 1
 fi
 
@@ -213,19 +213,19 @@ if [ "${OPT_NO_CHECKSUM}" -eq 0 ]; then
   printf '%s\n' "▓▒░ Fetching checksum: ${OPT_CHECKSUM_URL}"
   # shellcheck disable=SC2310
   if ! _fetch "${OPT_CHECKSUM_URL}" >"${CHECKSUM_FILE}"; then
-    printf '%s\n' "[1;31m▓▒░[0m Failed to fetch checksum file." >&2
+    printf '%b\n' "[1;31m▓▒░[0m Failed to fetch checksum file." >&2
     exit 1
   fi
 
   EXPECTED_HASH="$(grep "${CHECKSUM_KEY}" "${CHECKSUM_FILE}" | command awk '{print $1}')"
   if [ -z "${EXPECTED_HASH}" ]; then
-    printf '%s\n' "[1;31m▓▒░[0m No checksum entry for '${CHECKSUM_KEY}' in checksum.txt." >&2
+    printf '%b\n' "[1;31m▓▒░[0m No checksum entry for '${CHECKSUM_KEY}' in checksum.txt." >&2
     exit 1
   fi
 
   REMOTE_HASH="$(_sha256 "${REMOTE_FILE}")"
   if [ "${REMOTE_HASH}" != "${EXPECTED_HASH}" ]; then
-    printf '%s\n' "[1;31m▓▒░[0m Remote checksum mismatch!" >&2
+    printf '%b\n' "[1;31m▓▒░[0m Remote checksum mismatch!" >&2
     printf '%s\n' "  expected : ${EXPECTED_HASH}" >&2
     printf '%s\n' "  got      : ${REMOTE_HASH}" >&2
     exit 1
@@ -245,13 +245,13 @@ else
 fi
 
 if [ "${LOCAL_HASH}" = "${REMOTE_HASH}" ]; then
-  printf '%s\n' "[1;32m▓▒░[0m Local file matches remote. No sync needed."
+  printf '%b\n' "[1;32m▓▒░[0m Local file matches remote. No sync needed."
   printf '%s\n' "  hash : ${LOCAL_HASH}"
   printf '%s\n' "  path : ${OPT_LOCAL}"
   exit 0
 fi
 
-printf '%s\n' "[1;33m▓▒░[0m Local and remote differ."
+printf '%b\n' "[1;33m▓▒░[0m Local and remote differ."
 printf '%s\n' "  local  : ${LOCAL_HASH}"
 printf '%s\n' "  remote : ${REMOTE_HASH}"
 printf '%s\n' "  source : ${OPT_REMOTE}"
@@ -286,7 +286,7 @@ fi
 command mv "${TMP_TARGET}" "${OPT_LOCAL}"
 
 NEW_HASH="$(_sha256 "${OPT_LOCAL}")"
-printf '%s\n' "[1;32m▓▒░[0m Sync complete."
+printf '%b\n' "[1;32m▓▒░[0m Sync complete."
 printf '%s\n' "  before : ${LOCAL_HASH}"
 printf '%s\n' "  after  : ${NEW_HASH}"
 printf '%s\n' "  path   : ${OPT_LOCAL}"

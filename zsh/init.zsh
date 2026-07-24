@@ -119,8 +119,8 @@ _zi_pmod() {
 # Register Zi completion if the completion system is active.
 _zi_comps() {
   builtin emulate -L zsh
-  if (( ${+_comps} )) && [[ -f "${ZI[BIN_DIR]}/lib/_zi" ]]; then
-    (( ${+_comps[zi]} )) || _comps[zi]="${ZI[BIN_DIR]}/lib/_zi"
+  if (( ${+_comps} )); then
+    (( ${+_comps[zi]} )) || _comps[zi]=_zi
   fi
   return 0
 }

@@ -4,7 +4,7 @@
 
 set -eu
 
-WORKDIR="$(mktemp -d)" || exit 1
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-install.XXXXXX")" || exit 1
 trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 ZOPT=""
 AOPT=""
