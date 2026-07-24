@@ -139,6 +139,12 @@ EOF
 #!/usr/bin/env sh
 set -eu
 
+# Strip -C <dir> flag if present (used by install.sh to check remote URL)
+if [ "${1:-}" = "-C" ]; then
+  [ -n "${2:-}" ] || { printf '%s\n' "installers.sh git test double: -C requires a directory argument" >&2; exit 64; }
+  shift 2
+fi
+
 cmd="${1:-}"
 [ "$#" -gt 0 ] && shift
 
@@ -148,7 +154,7 @@ case "${cmd}" in
     for arg do
       dest="${arg}"
     done
-    [ -n "${dest}" ] || { printf '%s\n' "git test double: missing clone destination" >&2; exit 64; }
+    [ -n "${dest}" ] || { printf '%s\n' "installers.sh git test double: missing clone destination" >&2; exit 64; }
     mkdir -p "${dest}/.git" "${dest}/lib"
     printf '%s\n' '# fake zi.zsh' > "${dest}/zi.zsh"
     printf '%s\n' '# fake _zi completion' > "${dest}/lib/_zi"
@@ -158,8 +164,21 @@ case "${cmd}" in
   log)
     printf '%s\n' 'abcdef0 - fake zi commit (now) <test>'
     ;;
+  remote)
+    # After -C strip (if any) and cmd shift, $1/$2 hold the remote subcommand args
+    if [ "${1:-}" != "get-url" ]; then
+      printf '%s\n' "installers.sh git test double: expected remote subcommand 'get-url', got '${1:-<missing>}'" >&2
+      exit 65
+    fi
+    if [ "${2:-}" != "origin" ]; then
+      printf '%s\n' "installers.sh git test double: expected remote name 'origin', got '${2:-<missing>}'" >&2
+      exit 65
+    fi
+    # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var
+    printf '%s\n' "${ZI_SRC_TEST_FAKE_REMOTE:-https://github.com/z-shell/zi}"
+    ;;
   *)
-    printf '%s\n' "git test double: unexpected command ${cmd}" >&2
+    printf '%s\n' "installers.sh git test double: unexpected command ${cmd}" >&2
     exit 65
     ;;
 esac
@@ -226,6 +245,70 @@ test_standalone_zpmod_delegation() {
   pass "standalone install.sh fetches zpmod helper"
 }
 
+test_update_valid_zi_clone() {
+  home="${TMP_ROOT}/update-valid-home"
+  data="${TMP_ROOT}/update-valid-data"
+  zi_bin="${data}/zi/bin"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null
+
+  pass "update path accepts a valid zi clone"
+}
+
+test_update_rejects_foreign_repo() {
+  home="${TMP_ROOT}/update-foreign-home"
+  data="${TMP_ROOT}/update-foreign-data"
+  zi_bin="${data}/zi/bin"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  # Deliberately no zi.zsh: this simulates an unrelated git repo
+  err="${TMP_ROOT}/update-foreign-err"
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh should have rejected a foreign git repository"
+  contains "${err}" "does not appear to be a zi repository"
+  pass "update path rejects an unrecognised git repository"
+}
+
+test_update_rejects_wrong_remote() {
+  home="${TMP_ROOT}/update-wrong-remote-home"
+  data="${TMP_ROOT}/update-wrong-remote-data"
+  zi_bin="${data}/zi/bin"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+  err="${TMP_ROOT}/update-wrong-remote-err"
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    ZI_SRC_TEST_FAKE_REMOTE="https://github.com/unrelated/project" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh should have rejected a repo with a non-zi remote"
+  contains "${err}" "does not appear to be a zi repository"
+  pass "update path rejects a repository with a non-zi remote origin"
+}
+
 test_sync_init() {
   local_file="${TMP_ROOT}/local-init.zsh"
   remote_file="${TMP_ROOT}/remote-init.zsh"
@@ -265,4 +348,7 @@ write_fake_tools
 test_loader_install
 test_xdg_data_home_install
 test_standalone_zpmod_delegation
+test_update_valid_zi_clone
+test_update_rejects_foreign_repo
+test_update_rejects_wrong_remote
 test_sync_init
