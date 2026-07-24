@@ -1,8 +1,8 @@
 #!/usr/bin/env zsh
+
 # Source: https://github.com/molovo/revolver
 # License: MIT — Copyright (c) 2016 Joe Letchford
 # Maintained by z-shell/src — https://github.com/z-shell/src
-#
 
 local -A _revolver_spinners
 _revolver_spinners=(
@@ -79,7 +79,7 @@ function _revolver_usage() {
   echo "  start <message>    Start the spinner"
   echo "  update <message>   Update the message"
   echo "  stop               Stop the spinner"
-  echo "  demo               Display an demo of each style"
+  echo "  demo               Display a demo of each style"
 }
 
 ###
@@ -87,6 +87,10 @@ function _revolver_usage() {
 ###
 function _revolver_process() {
   local dir statefile state msg pid="$1" spinner_index=0
+
+  if [[ -z $pid || $pid != <-> ]]; then
+    exit 1
+  fi
 
   # Find the directory and load the statefile
   dir=${REVOLVER_DIR:-"${ZDOTDIR:-$HOME}/.revolver"}
@@ -107,11 +111,9 @@ function _revolver_process() {
     fi
 
     # Check for the existence of the parent process
-    $(kill -s 0 $pid 2&>/dev/null)
-
-    # If process doesn't exist, exit the script
-    # to prevent it from being orphaned
-    if [[ $? -ne 0 ]]; then
+    # and exit if process doesn't exist to prevent
+    # the spinner from being orphaned
+    if ! kill -s 0 "$pid" 2>/dev/null; then
       exit 1
     fi
 

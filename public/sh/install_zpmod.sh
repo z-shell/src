@@ -4,7 +4,7 @@
 
 set -eu
 
-WORKDIR="$(mktemp -d)" || exit 1
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-zpmod.XXXXXX")" || exit 1
 trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 
 # Returns 0 if version $1 >= version $2 (dot-separated integers)
