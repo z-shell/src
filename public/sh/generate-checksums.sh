@@ -14,7 +14,7 @@ set -eu
 
 ROOT="$(
   unset CDPATH
-  cd -- "$(dirname "$0")/../.." 2>/dev/null && pwd
+  cd "$(dirname "$0")/../.." 2>/dev/null && pwd
 )" || { printf '%s\n' "generate-checksums: cannot determine repository root" >&2; exit 1; }
 
 CHECKSUM_FILE="${ROOT}/public/checksum.txt"
