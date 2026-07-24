@@ -47,6 +47,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y zsh
+      - name: "⚙️ Generate checksums"
+        run: sh ./public/sh/generate-checksums.sh
       - name: "⚙️ Check: unit fixtures"
         run: sh ./tests/installers.sh
       - name: "⚙️  Check: install.sh -- -i skip"

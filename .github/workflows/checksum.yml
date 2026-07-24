@@ -3,6 +3,7 @@ name: Checksum
 on:
   push:
     paths:
+      - "public/sh/generate-checksums.sh"
       - "public/sh/install_zpmod.sh"
       - "public/sh/install.sh"
       - "public/sh/sync-init.sh"
@@ -25,14 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: "🆗 Generate checksum"
-        uses: jmgilman/actions-generate-checksum@3ea6dc9bf8eecf28e2ecc982fab683484a1a8561 # v1.0.1
-        with:
-          patterns: |
-            public/sh/install_zpmod.sh
-            public/sh/install.sh
-            public/sh/sync-init.sh
-            public/zsh/init.zsh
-      - run: mv checksum.txt public/
+        run: sh ./public/sh/generate-checksums.sh
       - name: "🆗 Commit"
         uses: z-shell/.github/actions/commit@3222f53692e448ed6e2caf8b8722e74fb2ca2461 # v1.1.1
         with:
