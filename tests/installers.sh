@@ -166,7 +166,7 @@ case "${cmd}" in
   remote)
     # Handle: remote get-url origin
     if [ "${1:-}" != "get-url" ] || [ "${2:-}" != "origin" ]; then
-      printf '%s\n' "git test double: expected 'remote get-url origin'" >&2
+      printf '%s\n' "git test double: expected 'remote get-url origin', got: remote ${1:-} ${2:-}" >&2
       exit 65
     fi
     # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var
