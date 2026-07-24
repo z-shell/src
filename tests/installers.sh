@@ -273,10 +273,10 @@ test_update_rejects_foreign_repo() {
     ZI_SRC_TEST_ROOT="${ROOT}" \
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
-  _exit_code="$?"
+  exit_code="$?"
   set -e
 
-  [ "${_exit_code}" -ne 0 ] || fail "install.sh should have rejected a foreign git repository"
+  [ "${exit_code}" -ne 0 ] || fail "install.sh should have rejected a foreign git repository"
   contains "${err}" "does not appear to be a zi repository"
   pass "update path rejects an unrecognised git repository"
 }
@@ -297,10 +297,10 @@ test_update_rejects_wrong_remote() {
     ZI_SRC_TEST_FAKE_REMOTE="https://github.com/unrelated/project" \
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
-  _exit_code="$?"
+  exit_code="$?"
   set -e
 
-  [ "${_exit_code}" -ne 0 ] || fail "install.sh should have rejected a repo with a non-zi remote"
+  [ "${exit_code}" -ne 0 ] || fail "install.sh should have rejected a repo with a non-zi remote"
   contains "${err}" "does not appear to be a zi repository"
   pass "update path rejects a repository with a non-zi remote origin"
 }
