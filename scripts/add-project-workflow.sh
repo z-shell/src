@@ -61,7 +61,7 @@ add_workflow() {
     fi
   done
 
-  tmpdir=$(mktemp -d)
+  tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/zi-workflow.XXXXXX") || { printf 'Error: failed to create temp dir\n' >&2; return 1; }
   trap 'rm -rf "$tmpdir"' EXIT INT TERM
 
   # Clone (shallow) — skip archived/empty repos gracefully

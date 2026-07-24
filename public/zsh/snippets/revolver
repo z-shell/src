@@ -110,7 +110,8 @@ function _revolver_process() {
       exit 1
     fi
 
-    # Check for the existence of the parent process    # and exit if process doesn't exist to prevent
+    # Check for the existence of the parent process
+    # and exit if process doesn't exist to prevent
     # the spinner from being orphaned
     if ! kill -s 0 "$pid" 2>/dev/null; then
       exit 1

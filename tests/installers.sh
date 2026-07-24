@@ -8,7 +8,7 @@ ROOT="$(
   unset CDPATH
   cd -- "$(dirname "$0")/.." && pwd
 )"
-TMP_ROOT="$(mktemp -d)" || exit 1
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/zi-test.XXXXXX")" || exit 1
 trap 'rm -rf "${TMP_ROOT:?}"' EXIT INT TERM
 
 fail() {
