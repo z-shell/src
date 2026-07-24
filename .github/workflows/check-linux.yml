@@ -4,25 +4,15 @@ on:
   push:
     branches: [main]
     paths:
-<<<<<<< HEAD
-      - "lib/sh/**"
-      - "lib/zsh/**"
-=======
       - "public/sh/**"
       - "public/zsh/**"
->>>>>>> origin/main
       - "tests/**"
       - ".github/workflows/check-linux.yml"
   pull_request:
     branches: [main]
     paths:
-<<<<<<< HEAD
-      - "lib/sh/**"
-      - "lib/zsh/**"
-=======
       - "public/sh/**"
       - "public/zsh/**"
->>>>>>> origin/main
       - "tests/**"
       - ".github/workflows/check-linux.yml"
   workflow_dispatch:
@@ -40,11 +30,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: ⤵️ Check out code from GitHub
-<<<<<<< HEAD
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-=======
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
->>>>>>> origin/main
       - name: ☑️ ShellCheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
@@ -56,11 +42,7 @@ jobs:
     needs: [shellcheck]
     steps:
       - name: ⤵️ Check out code from GitHub
-<<<<<<< HEAD
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-=======
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
->>>>>>> origin/main
       - name: ⚙️ Prepare dependencies
         run: |
           sudo apt-get update
@@ -68,15 +50,6 @@ jobs:
       - name: "⚙️ Check: unit fixtures"
         run: sh ./tests/installers.sh
       - name: "⚙️  Check: install.sh -- -i skip"
-<<<<<<< HEAD
-        run: sh -x ./lib/sh/install.sh -- -i skip; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-      - name: "⚙️  Check: install.sh -- -a annex"
-        run: sh -x ./lib/sh/install.sh -- -a annex; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-      - name: "⚙️  Check: install.sh -- -a loader"
-        run: sh -x ./lib/sh/install.sh -- -a loader; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-      - name: "⚙️  Check: install.sh -- -a zunit"
-        run: sh -x ./lib/sh/install.sh -- -a zunit; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-=======
         run: sh -x ./public/sh/install.sh -- -i skip; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️  Check: install.sh -- -a annex"
         run: sh -x ./public/sh/install.sh -- -a annex; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
@@ -84,7 +57,6 @@ jobs:
         run: sh -x ./public/sh/install.sh -- -a loader; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
       - name: "⚙️  Check: install.sh -- -a zunit"
         run: sh -x ./public/sh/install.sh -- -a zunit; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
->>>>>>> origin/main
       - name: "⚙️ Check: install_zpmod.sh"
         run: sh -x ./public/sh/install_zpmod.sh
       - name: ⚙️ Load zpmod module
@@ -94,11 +66,4 @@ jobs:
           zpmod source-study -l
         shell: zsh {0}
       - name: "⚙️ Check: init.zsh sync drift"
-<<<<<<< HEAD
-        run: >
-          sh lib/sh/sync-init.sh
-          --remote https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh
-          --checksum-url https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh.md5
-=======
         run: sh public/sh/sync-init.sh --local ./public/zsh/init.zsh --remote ./public/zsh/init.zsh --checksum-url ./public/checksum.txt
->>>>>>> origin/main

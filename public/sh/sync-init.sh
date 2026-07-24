@@ -2,16 +2,6 @@
 # -*- mode: sh; sh-indentation: 2; indent-tabs-mode: nil; sh-basic-offset: 2; -*-
 # vim: ft=sh sw=2 ts=2 et
 #
-<<<<<<< HEAD:lib/sh/sync-init.sh
-# sync-init.sh — verify and optionally sync local lib/zsh/init.zsh with remote.
-#
-# Usage:
-#   sh lib/sh/sync-init.sh [OPTIONS]
-#
-# Options:
-#   --write                  Replace local file with remote copy (requires valid checksum)
-#   --local PATH             Local file to compare (default: lib/zsh/init.zsh)
-=======
 # sync-init.sh — verify and optionally sync local public/zsh/init.zsh with remote.
 #
 # Usage:
@@ -20,7 +10,6 @@
 # Options:
 #   --write                  Replace local file with remote copy (requires valid checksum)
 #   --local PATH             Local file to compare (default: public/zsh/init.zsh)
->>>>>>> origin/main:public/sh/sync-init.sh
 #   --remote URL|PATH        Remote URL or local path (default: GitHub raw main)
 #   --checksum-url URL|PATH  Checksum.txt URL or path (default: GitHub raw main)
 #   --no-checksum            Skip checksum validation of remote content
@@ -39,17 +28,10 @@ trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-<<<<<<< HEAD:lib/sh/sync-init.sh
-DEFAULT_LOCAL="${REPO_ROOT}/lib/zsh/init.zsh"
-DEFAULT_REMOTE="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/zsh/init.zsh"
-DEFAULT_CHECKSUM_URL="https://raw.githubusercontent.com/z-shell/zi-src/main/lib/checksum.txt"
-CHECKSUM_KEY="lib/zsh/init.zsh"
-=======
 DEFAULT_LOCAL="${REPO_ROOT}/public/zsh/init.zsh"
 DEFAULT_REMOTE="https://raw.githubusercontent.com/z-shell/src/main/public/zsh/init.zsh"
 DEFAULT_CHECKSUM_URL="https://raw.githubusercontent.com/z-shell/src/main/public/checksum.txt"
 CHECKSUM_KEY="public/zsh/init.zsh"
->>>>>>> origin/main:public/sh/sync-init.sh
 
 OPT_LOCAL="${DEFAULT_LOCAL}"
 OPT_REMOTE="${DEFAULT_REMOTE}"
@@ -61,24 +43,14 @@ OPT_NO_CHECKSUM=0
 
 print_help() {
   cat <<EOF
-<<<<<<< HEAD:lib/sh/sync-init.sh
-Usage: sh lib/sh/sync-init.sh [OPTIONS]
-
-Verify local lib/zsh/init.zsh against the canonical GitHub raw main copy.
-=======
 Usage: sh public/sh/sync-init.sh [OPTIONS]
 
 Verify local public/zsh/init.zsh against the canonical GitHub raw main copy.
->>>>>>> origin/main:public/sh/sync-init.sh
 By default, reports mismatches only. Use --write to update the local file.
 
 Options:
   --write                  Replace local file with remote (requires valid checksum)
-<<<<<<< HEAD:lib/sh/sync-init.sh
-  --local PATH             Local file to compare [default: lib/zsh/init.zsh]
-=======
   --local PATH             Local file to compare [default: public/zsh/init.zsh]
->>>>>>> origin/main:public/sh/sync-init.sh
   --remote URL|PATH        Remote URL or local path [default: GitHub raw main]
   --checksum-url URL|PATH  Checksum URL or path [default: GitHub raw main checksum.txt]
   --no-checksum            Skip checksum validation of remote content
@@ -91,21 +63,6 @@ Exit codes:
 EOF
 }
 
-<<<<<<< HEAD:lib/sh/sync-init.sh
-# Fetch a URL or copy a local readable path to stdout.
-_fetch() {
-  _src="$1"
-  case "${_src}" in
-  http://* | https://*)
-    if command -v curl >/dev/null 2>&1; then
-      command curl -fsSL "${_src}"
-    elif command -v wget >/dev/null 2>&1; then
-      command wget -qO- "${_src}"
-    else
-      printf '%s\n' "[1;31m▓▒░[0m No curl or wget available." >&2
-      return 1
-    fi
-=======
 _fetch_url() {
   _url="$1"
   if command -v curl >/dev/null 2>&1; then
@@ -159,7 +116,6 @@ _fetch() {
     fi
     printf '%s\n' "[1;31m▓▒░[0m Failed to fetch: ${_src}" >&2
     return 1
->>>>>>> origin/main:public/sh/sync-init.sh
     ;;
   *)
     if [ -r "${_src}" ]; then

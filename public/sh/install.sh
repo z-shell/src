@@ -95,12 +95,6 @@ if [ "${AOPT}" = loader ]; then
   ZI_CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/zi"
   loader_tmp="${WORKDIR}/init.zsh.tmp"
   command mkdir -p "${ZI_CONFIG_DIR}"
-<<<<<<< HEAD:lib/sh/install.sh
-  if command -v curl >/dev/null 2>&1; then
-    command curl -fsSL https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh -o "${ZI_CONFIG_DIR}/init.zsh"
-  elif command -v wget >/dev/null 2>&1; then
-    command wget -qO "${ZI_CONFIG_DIR}/init.zsh" https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh
-=======
   set +e
   fetch_to_file "${ZI_CONFIG_DIR}/init.zsh" \
     "${LOCAL_INIT_ZSH}" \
@@ -111,17 +105,11 @@ if [ "${AOPT}" = loader ]; then
   if [ "${fetch_status}" -ne 0 ]; then
     printf '%s\n' "-- ERROR -- failed to retrieve init.zsh" >&2
     exit 1
->>>>>>> origin/main:public/sh/install.sh
   fi
   # shellcheck disable=SC2016
   command sed 's|: ${ZI\[STREAM\]:="main"}|: ${ZI[STREAM]:="'"${BOPT}"'"}|' "${ZI_CONFIG_DIR}/init.zsh" >"${loader_tmp}" &&
     command mv "${loader_tmp}" "${ZI_CONFIG_DIR}/init.zsh"
   command chmod go-w "${ZI_CONFIG_DIR}" && command chmod a+x "${ZI_CONFIG_DIR}/init.zsh"
-<<<<<<< HEAD:lib/sh/install.sh
-  # shellcheck disable=SC2016
-  command sed -i 's|: ${ZI\[STREAM\]:="main"}|: ${ZI[STREAM]:="'"${BOPT}"'"}|' "${ZI_CONFIG_DIR}/init.zsh"
-=======
->>>>>>> origin/main:public/sh/install.sh
 fi
 
 if [ -z "${ZI_HOME-}" ]; then
@@ -143,18 +131,6 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 # Get the download-progress bar tool
-<<<<<<< HEAD:lib/sh/install.sh
-if command -v curl >/dev/null 2>&1; then
-  command mkdir -p /tmp/zi
-  cd /tmp/zi || exit 1
-  command curl -fsSLO https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh &&
-    command chmod a+x /tmp/zi/git-process-output.zsh
-elif command -v wget >/dev/null 2>&1; then
-  command mkdir -p /tmp/zi
-  cd /tmp/zi || exit 1
-  command wget -q https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh &&
-    command chmod a+x /tmp/zi/git-process-output.zsh
-=======
 command mkdir -p /tmp/zi
 cd /tmp/zi || exit 1
 set +e
@@ -167,7 +143,6 @@ set -e
 if [ "${fetch_status}" -ne 0 ]; then
   printf '%s\n' "-- ERROR -- failed to retrieve git-process-output.zsh" >&2
   exit 1
->>>>>>> origin/main:public/sh/install.sh
 fi
 command chmod a+x /tmp/zi/git-process-output.zsh
 
@@ -259,38 +234,6 @@ EOF
 
 ZPMOD_PROFILE() {
   _zpmod_sh=""
-<<<<<<< HEAD:lib/sh/install.sh
-  case "$0" in
-  */*)
-    _script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _script_dir=""
-    ;;
-  *)
-    _script_dir=""
-    ;;
-  esac
-
-  if [ -n "${_script_dir}" ] && [ -f "${_script_dir}/install_zpmod.sh" ]; then
-    _zpmod_sh="${_script_dir}/install_zpmod.sh"
-  else
-    _zpmod_sh="${WORKDIR}/install_zpmod.sh"
-    _zpmod_url="https://raw.githubusercontent.com/z-shell/src/main/lib/sh/install_zpmod.sh"
-    if command -v curl >/dev/null 2>&1; then
-      command curl -fsSL "${_zpmod_url}" -o "${_zpmod_sh}"
-    elif command -v wget >/dev/null 2>&1; then
-      command wget -qO "${_zpmod_sh}" "${_zpmod_url}"
-    else
-      printf '%s\n' "-- ERROR -- curl or wget is required to download install_zpmod.sh" >&2
-      exit 1
-    fi
-    if [ ! -s "${_zpmod_sh}" ]; then
-      printf '%s\n' "-- ERROR -- failed to download install_zpmod.sh" >&2
-      exit 1
-    fi
-    command chmod a+x "${_zpmod_sh}"
-  fi
-
-  exec sh "${_zpmod_sh}" "$@"
-=======
   if [ -n "${LOCAL_INSTALL_ZPMOD}" ]; then
     _zpmod_sh="${LOCAL_INSTALL_ZPMOD}"
   else
@@ -313,7 +256,6 @@ ZPMOD_PROFILE() {
     exec sh "${_zpmod_sh}" "$@"
   fi
   exec sh "${_zpmod_sh}"
->>>>>>> origin/main:public/sh/install.sh
 }
 
 CLOSE_PROFILE() {
@@ -347,12 +289,8 @@ EOF
   exit 0
 }
 
-<<<<<<< HEAD:lib/sh/install.sh
-MAIN "${@}"
-=======
 if [ "$#" -gt 0 ]; then
   MAIN "$@"
 else
   MAIN
 fi
->>>>>>> origin/main:public/sh/install.sh

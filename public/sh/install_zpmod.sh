@@ -136,12 +136,8 @@ MAIN() {
   exit 0
 }
 
-<<<<<<< HEAD:lib/sh/install_zpmod.sh
-MAIN "${@}"
-=======
 if [ "$#" -gt 0 ]; then
   MAIN "$@"
 else
   MAIN
 fi
->>>>>>> origin/main:public/sh/install_zpmod.sh

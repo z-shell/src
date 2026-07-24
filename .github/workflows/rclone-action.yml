@@ -2,14 +2,7 @@
 name: Rclone
 on:
   push:
-<<<<<<< HEAD
-    branches: [main]
-    paths:
-      - "lib/**"
-      - ".github/workflows/rclone-action.yml"
-=======
     branches: [gh-pages]
->>>>>>> origin/main
   workflow_dispatch: {}
 
 permissions:
@@ -29,11 +22,7 @@ jobs:
       remote_path: "r2:r2-store/src"
     steps:
       - name: "⤵️ Check out code from GitHub"
-<<<<<<< HEAD
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-=======
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
->>>>>>> origin/main
       - name: "⏫ Run rclone/r2-store"
         uses: z-shell/.github/actions/rclone@3222f53692e448ed6e2caf8b8722e74fb2ca2461 # v1.1.1
         with:
