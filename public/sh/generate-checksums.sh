@@ -31,7 +31,7 @@ sha256_file() {
 }
 
 # Clear (or create) the checksum file before writing fresh entries
-> "${CHECKSUM_FILE}"
+: > "${CHECKSUM_FILE}"
 for f in \
   public/sh/install_zpmod.sh \
   public/sh/install.sh \
