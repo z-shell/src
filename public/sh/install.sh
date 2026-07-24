@@ -38,9 +38,9 @@ shift $((OPTIND - 1))
 
 # Validate BOPT to prevent sed delimiter injection when building init.zsh.
 # | is the sed delimiter used in the substitution; \ and & are special in
-# sed replacement expressions. The *'\\'* pattern matches a single backslash.
+# sed replacement expressions. The *[\\]* pattern matches a single backslash.
 case "${BOPT}" in
-  *'|'* | *'\\'* | *'&'* )
+  *'|'* | *[\\]* | *'&'* )
     printf '%s\n' "-- ERROR -- Invalid -b value: branch name must not contain '|', '\\', or '&'." >&2
     exit 1
     ;;
