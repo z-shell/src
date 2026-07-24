@@ -40,6 +40,7 @@ shift $((OPTIND - 1))
 # | is the sed delimiter used in the substitution; \ and & are special in
 # sed replacement expressions. The *[\\]* pattern matches a single backslash.
 case "${BOPT}" in
+  # [\\] is a bracket expression for a literal backslash.
   *'|'* | *[\\]* | *'&'* )
     printf '%s\n' "-- ERROR -- Invalid -b value: branch name must not contain '|', '\\', or '&'." >&2
     exit 1

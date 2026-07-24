@@ -141,7 +141,7 @@ set -eu
 
 # Strip -C <dir> flag if present (used by install.sh to check remote URL)
 if [ "${1:-}" = "-C" ]; then
-  [ -n "${2:-}" ] || { printf '%s\n' "git test double: -C requires a directory argument" >&2; exit 64; }
+  [ -n "${2:-}" ] || { printf '%s\n' "installers.sh git test double: -C requires a directory argument" >&2; exit 64; }
   shift 2
 fi
 
@@ -154,7 +154,7 @@ case "${cmd}" in
     for arg do
       dest="${arg}"
     done
-    [ -n "${dest}" ] || { printf '%s\n' "git test double: missing clone destination" >&2; exit 64; }
+    [ -n "${dest}" ] || { printf '%s\n' "installers.sh git test double: missing clone destination" >&2; exit 64; }
     mkdir -p "${dest}/.git" "${dest}/lib"
     printf '%s\n' '# fake zi.zsh' > "${dest}/zi.zsh"
     printf '%s\n' '# fake _zi completion' > "${dest}/lib/_zi"
@@ -167,18 +167,18 @@ case "${cmd}" in
   remote)
     # After -C strip (if any) and cmd shift, $1/$2 hold the remote subcommand args
     if [ "${1:-}" != "get-url" ]; then
-      printf '%s\n' "git test double: expected remote subcommand 'get-url', got '${1:-<missing>}'" >&2
+      printf '%s\n' "installers.sh git test double: expected remote subcommand 'get-url', got '${1:-<missing>}'" >&2
       exit 65
     fi
     if [ "${2:-}" != "origin" ]; then
-      printf '%s\n' "git test double: expected remote name 'origin', got '${2:-<missing>}'" >&2
+      printf '%s\n' "installers.sh git test double: expected remote name 'origin', got '${2:-<missing>}'" >&2
       exit 65
     fi
     # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var
     printf '%s\n' "${ZI_SRC_TEST_FAKE_REMOTE:-https://github.com/z-shell/zi}"
     ;;
   *)
-    printf '%s\n' "git test double: unexpected command ${cmd}" >&2
+    printf '%s\n' "installers.sh git test double: unexpected command ${cmd}" >&2
     exit 65
     ;;
 esac
