@@ -38,7 +38,7 @@ shift $((OPTIND - 1))
 
 # Validate BOPT to prevent sed delimiter injection
 case "${BOPT}" in
-  *'|'* | *'\'* | *'&'*)
+  *'|'* | *\\* | *'&'*)
     printf '%s\n' "-- ERROR -- Invalid -b value: branch name must not contain '|', '\\', or '&'." >&2
     exit 1
     ;;
@@ -158,7 +158,7 @@ if test -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}/.git"; then
   _zi_valid=0
   if test -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh"; then
     _zi_remote="$(command git -C "${ZI_HOME}/${ZI_BIN_DIR_NAME}" remote get-url origin 2>/dev/null || true)"
-    if printf '%s\n' "${_zi_remote}" | grep -q 'z-shell/zi'; then
+    if printf '%s\n' "${_zi_remote}" | grep -q 'github\.com[/:]z-shell/zi'; then
       _zi_valid=1
     fi
   fi

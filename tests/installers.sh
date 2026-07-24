@@ -165,6 +165,10 @@ case "${cmd}" in
     ;;
   remote)
     # Handle: remote get-url origin
+    if [ "${1:-}" != "get-url" ] || [ "${2:-}" != "origin" ]; then
+      printf '%s\n' "git test double: unsupported remote subcommand: $*" >&2
+      exit 65
+    fi
     # Return a zi remote URL; override via ZI_SRC_TEST_FAKE_REMOTE env var
     printf '%s\n' "${ZI_SRC_TEST_FAKE_REMOTE:-https://github.com/z-shell/zi}"
     ;;
@@ -259,6 +263,7 @@ test_update_rejects_foreign_repo() {
   zi_bin="${data}/zi/bin"
   command mkdir -p "${home}" "${zi_bin}/.git"
   # Deliberately no zi.zsh: this simulates an unrelated git repo
+  err="${TMP_ROOT}/update-foreign-err"
 
   set +e
   HOME="${home}" \
@@ -266,11 +271,12 @@ test_update_rejects_foreign_repo() {
     XDG_DATA_HOME="${data}" \
     ZI_SRC_TEST_ROOT="${ROOT}" \
     PATH="${FAKE_BIN}:${PATH}" \
-    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>&1
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
   _exit_code="$?"
   set -e
 
   [ "${_exit_code}" -ne 0 ] || fail "install.sh should have rejected a foreign git repository"
+  contains "${err}" "does not appear to be a zi repository"
   pass "update path rejects an unrecognised git repository"
 }
 
@@ -280,6 +286,7 @@ test_update_rejects_wrong_remote() {
   zi_bin="${data}/zi/bin"
   command mkdir -p "${home}" "${zi_bin}/.git"
   printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+  err="${TMP_ROOT}/update-wrong-remote-err"
 
   set +e
   HOME="${home}" \
@@ -288,11 +295,12 @@ test_update_rejects_wrong_remote() {
     ZI_SRC_TEST_ROOT="${ROOT}" \
     ZI_SRC_TEST_FAKE_REMOTE="https://github.com/unrelated/project" \
     PATH="${FAKE_BIN}:${PATH}" \
-    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>&1
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
   _exit_code="$?"
   set -e
 
   [ "${_exit_code}" -ne 0 ] || fail "install.sh should have rejected a repo with a non-zi remote"
+  contains "${err}" "does not appear to be a zi repository"
   pass "update path rejects a repository with a non-zi remote origin"
 }
 
