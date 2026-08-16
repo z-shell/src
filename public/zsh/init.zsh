@@ -13,21 +13,21 @@
 typeset -ghA ZI
 
 # https://wiki.zshell.dev/docs/guides/customization
-: ${ZI[REPOSITORY]:="https://github.com/z-shell/zi.git"}
-: ${ZI[STREAM]:="main"}
-: ${ZI[HOME_DIR]:="${XDG_DATA_HOME:-$HOME/.local/share}/zi"}
-: ${ZI[BIN_DIR]:="${ZI[HOME_DIR]}/bin"}
-: ${ZI[CACHE_DIR]:="${XDG_CACHE_HOME:-$HOME/.cache}/zi"}
-: ${ZI[CONFIG_DIR]:="${XDG_CONFIG_HOME:-$HOME/.config}/zi"}
+: "${ZI[REPOSITORY]:=https://github.com/z-shell/zi.git}"
+: "${ZI[STREAM]:=main}"
+: "${ZI[HOME_DIR]:=${XDG_DATA_HOME:-$HOME/.local/share}/zi}"
+: "${ZI[BIN_DIR]:=${ZI[HOME_DIR]}/bin}"
+: "${ZI[CACHE_DIR]:=${XDG_CACHE_HOME:-$HOME/.cache}/zi}"
+: "${ZI[CONFIG_DIR]:=${XDG_CONFIG_HOME:-$HOME/.config}/zi}"
 
 # https://wiki.zshell.dev/community/zsh_plugin_standard#global-parameter-with-prefix
-: ${ZPFX:=${ZI[HOME_DIR]}/polaris}
-: ${ZI[ZMODULES_DIR]:=${ZI[HOME_DIR]}/zmodules}
-: ${ZI[ZCOMPDUMP_PATH]:=${ZI[CACHE_DIR]}/.zcompdump}
-: ${ZI[MUTE_WARNINGS]:=0}
+: "${ZPFX:=${ZI[HOME_DIR]}/polaris}"
+: "${ZI[ZMODULES_DIR]:=${ZI[HOME_DIR]}/zmodules}"
+: "${ZI[ZCOMPDUMP_PATH]:=${ZI[CACHE_DIR]}/.zcompdump}"
+: "${ZI[MUTE_WARNINGS]:=0}"
 
 # History defaults
-: ${HISTFILE:=${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history}
+: "${HISTFILE:=${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history}"
 [[ -e "$HISTFILE" ]] || { command mkdir -p "${HISTFILE:h}"; command touch "$HISTFILE"; }
 [[ -w "$HISTFILE" ]] && typeset -gx SAVEHIST=440000 HISTSIZE=441000
 

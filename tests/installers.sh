@@ -64,6 +64,39 @@ check_checksums() {
   pass "checksums"
 }
 
+test_init_defaults_are_single_arguments() {
+  capture_log="${TMP_ROOT}/init-default-arguments"
+  values_log="${TMP_ROOT}/init-default-values"
+
+  zsh -f -c '
+    capture_colon() { print -r -- "argc:$#" >>"$CAPTURE_LOG"; }
+    alias ":=capture_colon"
+    setopt aliases sh_word_split
+    typeset -A ZI
+    ZI[REPOSITORY]="repository with spaces"
+    export HOME="$4/home with spaces"
+    export XDG_DATA_HOME="$4/data root"
+    export XDG_CACHE_HOME="$4/cache root"
+    export XDG_CONFIG_HOME="$4/config root"
+    export XDG_STATE_HOME="$4/state root"
+    export CAPTURE_LOG="$2"
+    source "$1"
+    {
+      print -r -- "repository:${ZI[REPOSITORY]}"
+      print -r -- "home:${ZI[HOME_DIR]}"
+      print -r -- "history:${HISTFILE}"
+    } >"$3"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${capture_log}" "${values_log}" "${TMP_ROOT}"
+
+  if grep -Fv 'argc:1' "${capture_log}" >/dev/null 2>&1; then
+    fail "init defaults were split into multiple arguments under SH_WORD_SPLIT"
+  fi
+  contains "${values_log}" 'repository:repository with spaces'
+  contains "${values_log}" "home:${TMP_ROOT}/data root/zi"
+  contains "${values_log}" "history:${TMP_ROOT}/state root/zsh/history"
+  pass "init defaults preserve argument and value boundaries"
+}
+
 write_fake_tools() {
   FAKE_BIN="${TMP_ROOT}/bin"
   command mkdir -p "${FAKE_BIN}"
@@ -202,7 +235,7 @@ test_loader_install() {
     sh "${ROOT}/public/sh/install.sh" -a loader -b feature/test >/dev/null
 
   # shellcheck disable=SC2016
-  contains "${config}/zi/init.zsh" ': ${ZI[STREAM]:="feature/test"}'
+  contains "${config}/zi/init.zsh" ': "${ZI[STREAM]:=feature/test}"'
   # shellcheck disable=SC2016
   contains "${home}/.zshrc" 'source "${XDG_CONFIG_HOME:-${HOME}/.config}/zi/init.zsh" && zzinit'
   [ -f "${data}/zi/bin/zi.zsh" ] || fail "loader install did not clone Zi into XDG data home"
@@ -344,6 +377,7 @@ test_sync_init() {
 
 check_syntax
 check_checksums
+test_init_defaults_are_single_arguments
 write_fake_tools
 test_loader_install
 test_xdg_data_home_install
