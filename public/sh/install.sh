@@ -118,7 +118,7 @@ if [ "${AOPT}" = loader ]; then
     exit 1
   fi
   # shellcheck disable=SC2016
-  command sed 's|: ${ZI\[STREAM\]:="main"}|: ${ZI[STREAM]:="'"${BOPT}"'"}|' "${ZI_CONFIG_DIR}/init.zsh" >"${loader_tmp}" &&
+  command sed 's|: "${ZI\[STREAM\]:=main}"|: "${ZI[STREAM]:='"${BOPT}"'}"|' "${ZI_CONFIG_DIR}/init.zsh" >"${loader_tmp}" &&
     command mv "${loader_tmp}" "${ZI_CONFIG_DIR}/init.zsh"
   command chmod go-w "${ZI_CONFIG_DIR}" && command chmod a+x "${ZI_CONFIG_DIR}/init.zsh"
 fi
