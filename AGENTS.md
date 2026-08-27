@@ -9,8 +9,11 @@ This project follows the organization-wide [Z-Shell Organization Guidelines](htt
 ## Conventions & Testing
 
 - Language: Zsh and POSIX sh.
-- Follow `.github/instructions/zsh-scripting.instructions.md`.
-- Verify installer and loader behavior with the test suite:
-  ```bash
-  make test || ./tests/run.sh
+- Follow the canonical
+  [shell dialect dispatcher](https://github.com/z-shell/.github/blob/main/.github/instructions/shell.instructions.md)
+  and, for Zsh files, the
+  [Zsh Scripting Standard](https://github.com/z-shell/.github/blob/main/.github/instructions/zsh-scripting.instructions.md).
+- Verify installer and loader behavior with the repository test suite:
+  ```sh
+  sh ./tests/installers.sh
   ```
