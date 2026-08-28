@@ -207,7 +207,7 @@ MAIN_PROFILE() {
 if [[ ! -f ${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh ]]; then
   print -P "%F{33}▓▒░ %F{160}Installing (%F{33}z-shell/zi%F{160})…%f"
   command mkdir -p "${ZI_HOME}" && command chmod go-rwX "${ZI_HOME}"
-  command git clone -q --depth=1 --branch "${BOPT}" https://github.com/z-shell/zi "${ZI_HOME}/${ZI_BIN_DIR_NAME}" && \\
+  command git clone -q --filter=blob:none --single-branch --branch "${BOPT}" https://github.com/z-shell/zi "${ZI_HOME}/${ZI_BIN_DIR_NAME}" && \\
     print -P "%F{33}▓▒░ %F{34}Installation successful.%f%b" || \\
     print -P "%F{160}▓▒░ The clone has failed.%f%b"
 fi

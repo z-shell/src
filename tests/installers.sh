@@ -97,6 +97,145 @@ test_init_defaults_are_single_arguments() {
   pass "init defaults preserve argument and value boundaries"
 }
 
+test_init_preserves_caller_options() {
+  values_log="${TMP_ROOT}/init-option-values"
+
+  # zi.zsh's top level deliberately sets AUTO_CD and marks the path arrays
+  # exported/unique. Wrapping the source in `emulate -L zsh` would localize
+  # those to the loader's own function and silently discard them, so the loader
+  # guards only the options that would corrupt parsing and restores the
+  # caller's values afterwards.
+  zsh -f -c '
+    typeset -ghA ZI
+    ZI[HOME_DIR]="$3/opt-home"
+    ZI[BIN_DIR]="$3/opt-home/bin"
+    ZI[CDPATH_DIR]="$3/opt-home/cd_path"
+    command mkdir -p "${ZI[BIN_DIR]}" "${ZI[CDPATH_DIR]}"
+
+    # A stand-in for zi.zsh that reproduces the two behaviours that matter:
+    # it needs default word splitting, and its global effects must survive.
+    print -r -- "
+      typeset -g SAW_SPLIT=\${options[sh_word_split]}
+      typeset -g SAW_KSHARRAYS=\${options[ksh_arrays]}
+      builtin setopt auto_cd
+      typeset -gxU path PATH
+    " > "${ZI[BIN_DIR]}/zi.zsh"
+
+    setopt sh_word_split ksh_arrays
+    source "$1"
+    zzinit
+
+    {
+      print -r -- "caller_split:${options[sh_word_split]}"
+      print -r -- "caller_ksharrays:${options[ksh_arrays]}"
+      print -r -- "inner_split:${SAW_SPLIT}"
+      print -r -- "inner_ksharrays:${SAW_KSHARRAYS}"
+      print -r -- "autocd:${options[autocd]}"
+    } >"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${TMP_ROOT}"
+
+  # The caller keeps the options it had.
+  contains "${values_log}" 'caller_split:on'
+  contains "${values_log}" 'caller_ksharrays:on'
+  # zi.zsh is sourced with sane parsing options regardless of the caller.
+  contains "${values_log}" 'inner_split:off'
+  contains "${values_log}" 'inner_ksharrays:off'
+  # zi.zsh's intentional global effect survives the loader.
+  contains "${values_log}" 'autocd:on'
+  pass "loader guards parsing options without discarding Zi's global effects"
+}
+
+test_init_history_opt_out() {
+  values_log="${TMP_ROOT}/init-history-values"
+  history_home="${TMP_ROOT}/history-home"
+  command mkdir -p "${history_home}"
+
+  zsh -f -c '
+    export HOME="$3"
+    export XDG_STATE_HOME="$3/state"
+    typeset -ghA ZI
+    ZI[LOADER_HISTORY]=0
+    source "$1"
+    {
+      print -r -- "histfile:${HISTFILE:-<unset>}"
+      print -r -- "statedir:$([[ -d $XDG_STATE_HOME/zsh ]] && print present || print absent)"
+    } >"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${history_home}"
+
+  contains "${values_log}" 'histfile:<unset>'
+  contains "${values_log}" 'statedir:absent'
+  pass "ZI[LOADER_HISTORY]=0 suppresses history defaults and filesystem writes"
+}
+
+test_init_rejects_invalid_stream() {
+  values_log="${TMP_ROOT}/init-stream-values"
+  err_log="${TMP_ROOT}/init-stream-err"
+
+  # An option-like ZI[STREAM] must never reach `git clone --branch`.
+  zsh -f -c '
+    typeset -ghA ZI
+    ZI[HOME_DIR]="$4/stream-home"
+    ZI[BIN_DIR]="$4/stream-home/bin"
+    ZI[STREAM]="--upload-pack=touch $4/stream-pwned"
+    source "$1"
+    zzinit 2>"$3"
+    print -r -- "status:$?" >"$2"
+    print -r -- "retryable:${+functions[zzinit]}" >>"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${err_log}" "${TMP_ROOT}"
+
+  contains "${values_log}" 'status:1'
+  # A failed run keeps zzinit defined so the user can fix and retry.
+  contains "${values_log}" 'retryable:1'
+  contains "${err_log}" 'not a valid ref name'
+  [ -e "${TMP_ROOT}/stream-pwned" ] && fail "invalid ZI[STREAM] reached git clone"
+  pass "invalid ZI[STREAM] is rejected before reaching git"
+}
+
+test_init_progress_filter_url() {
+  # The loader downloads this file and executes it. A 404 previously aborted
+  # every clean install with no diagnostic, so the path is asserted here.
+  contains "${ROOT}/public/zsh/init.zsh" \
+    'https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh'
+  pass "progress filter URL points at the published path"
+}
+
+test_init_uses_private_tempdir() {
+  # A fixed ${TMPDIR}/zi path would let another user pre-place the executable
+  # that the loader downloads, chmods, and runs.
+  if grep -F '${TMPDIR:-/tmp}/zi"' "${ROOT}/public/zsh/init.zsh" >/dev/null 2>&1; then
+    fail "loader uses a predictable temporary directory"
+  fi
+  contains "${ROOT}/public/zsh/init.zsh" 'mktemp -d'
+  pass "loader downloads the progress filter into a private temporary directory"
+}
+
+test_init_xdg_paths_are_strict() {
+  values_log="${TMP_ROOT}/init-xdg-values"
+  xdg_home="${TMP_ROOT}/xdg-home"
+  # The legacy directories exist AND the XDG variables are set. zi.zsh's own
+  # fallbacks prefer the legacy paths in exactly this situation, so the loader
+  # must assign the XDG values itself.
+  command mkdir -p "${xdg_home}/.cache" "${xdg_home}/.config" \
+    "${TMP_ROOT}/xdg-cache" "${TMP_ROOT}/xdg-config"
+
+  zsh -f -c '
+    export HOME="$3"
+    export XDG_CACHE_HOME="$4"
+    export XDG_CONFIG_HOME="$5"
+    typeset -ghA ZI
+    source "$1"
+    {
+      print -r -- "cache:${ZI[CACHE_DIR]}"
+      print -r -- "config:${ZI[CONFIG_DIR]}"
+    } >"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" \
+    "${xdg_home}" "${TMP_ROOT}/xdg-cache" "${TMP_ROOT}/xdg-config"
+
+  contains "${values_log}" "cache:${TMP_ROOT}/xdg-cache/zi"
+  contains "${values_log}" "config:${TMP_ROOT}/xdg-config/zi"
+  pass "loader keeps strict XDG cache and config paths"
+}
+
 write_fake_tools() {
   FAKE_BIN="${TMP_ROOT}/bin"
   command mkdir -p "${FAKE_BIN}"
@@ -378,6 +517,12 @@ test_sync_init() {
 check_syntax
 check_checksums
 test_init_defaults_are_single_arguments
+test_init_preserves_caller_options
+test_init_history_opt_out
+test_init_rejects_invalid_stream
+test_init_progress_filter_url
+test_init_uses_private_tempdir
+test_init_xdg_paths_are_strict
 write_fake_tools
 test_loader_install
 test_xdg_data_home_install
