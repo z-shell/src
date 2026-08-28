@@ -53,8 +53,10 @@ setup_zpmod_repository() {
     cd "${MOD_HOME}" || exit 1
     git pull -q origin main
   else
-    git clone --depth 10 -q https://github.com/z-shell/zpmod.git "${MOD_HOME}"
+    git clone --depth 10 --recurse-submodules --shallow-submodules -q \
+      https://github.com/z-shell/zpmod.git "${MOD_HOME}"
   fi
+  git -C "${MOD_HOME}" submodule update --init --recursive -q
 }
 
 build_zpmod_module() {
@@ -70,8 +72,48 @@ build_zpmod_module() {
       (
         printf '%s\n' "${col_info2}-- Zsh version ${ZSH_CURRENT} --${col_rst}"
         cd "${MOD_HOME}" || exit 1
-        printf '%s\n' "${col_pname}== Building module ZPMOD, running: a make clean, then ./configure and then make ==${col_rst}"
         printf '%s\n' "${col_pname}== The module sources are located at: ${MOD_HOME} ==${col_rst}"
+        if test -f CMakeLists.txt; then
+          printf '%s\n' "${col_pname}== Building module ZPMOD with CMake ==${col_rst}"
+          _clean_arg=""
+          if [ "${1-}" = "--clean" ]; then
+            _clean_arg="--clean"
+          fi
+          # shellcheck disable=SC2086
+          zsh ./scripts/cmake.configure.zsh \
+            --generator make --build-type Release -j 4 ${_clean_arg}
+
+          _staged_file=""
+          for _candidate in \
+            build-cmake/stage/lib/zsh/site-modules/zpmod.so \
+            build-cmake/stage/lib/zsh/site-modules/zpmod.bundle \
+            build-cmake/stage/lib/zsh/site-modules/zpmod.dylib \
+            build-cmake/stage/lib/zsh/site-modules/zpmod.dll \
+            build-cmake/out/lib/zpmod.so \
+            build-cmake/out/lib/zpmod.bundle \
+            build-cmake/out/lib/zpmod.dylib \
+            build-cmake/out/lib/zpmod.dll
+          do
+            if test -f "${_candidate}"; then
+              _staged_file="${_candidate}"
+              break
+            fi
+          done
+          if [ -z "${_staged_file}" ]; then
+            printf '%s\n' "${col_error}Module artifact was not produced.${col_rst}"
+            exit 1
+          fi
+
+          mkdir -p Src/zi
+          cp -f "${_staged_file}" Src/zi/zpmod.so
+          cp -f "${_staged_file}" Src/zi/zpmod.bundle
+          cp -f "${_staged_file}" zpmod.so
+          date +%s > COMPILED_AT
+          printf '%s\n' "${col_info2}-- Module built successfully --${col_rst}"
+          exit 0
+        fi
+
+        printf '%s\n' "${col_pname}== Building module ZPMOD, running: a make clean, then ./configure and then make ==${col_rst}"
         if test -f Makefile; then
           if [ "${1-}" = "--clean" ]; then
             printf '%s\n' "${col_info2}-- make distclean --${col_rst}"
