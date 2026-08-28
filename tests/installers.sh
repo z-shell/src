@@ -97,6 +97,188 @@ test_init_defaults_are_single_arguments() {
   pass "init defaults preserve argument and value boundaries"
 }
 
+test_init_preserves_caller_options() {
+  values_log="${TMP_ROOT}/init-option-values"
+
+  # zi.zsh's top level deliberately sets AUTO_CD and marks the path arrays
+  # exported/unique. Wrapping the source in `emulate -L zsh` would localize
+  # those to the loader's own function and silently discard them, so the loader
+  # guards only the options that would corrupt parsing and restores the
+  # caller's values afterwards.
+  zsh -f -c '
+    typeset -ghA ZI
+    ZI[HOME_DIR]="$3/opt-home"
+    ZI[BIN_DIR]="$3/opt-home/bin"
+    ZI[CDPATH_DIR]="$3/opt-home/cd_path"
+    command mkdir -p "${ZI[BIN_DIR]}" "${ZI[CDPATH_DIR]}"
+
+    # A stand-in for zi.zsh that reproduces the two behaviours that matter:
+    # it needs default word splitting, and its global effects must survive.
+    print -r -- "
+      typeset -g SAW_SPLIT=\${options[sh_word_split]}
+      typeset -g SAW_KSHARRAYS=\${options[ksh_arrays]}
+      builtin setopt auto_cd
+      typeset -gxU path PATH
+    " > "${ZI[BIN_DIR]}/zi.zsh"
+
+    setopt sh_word_split ksh_arrays
+    source "$1"
+    zzinit
+
+    {
+      print -r -- "caller_split:${options[sh_word_split]}"
+      print -r -- "caller_ksharrays:${options[ksh_arrays]}"
+      print -r -- "inner_split:${SAW_SPLIT}"
+      print -r -- "inner_ksharrays:${SAW_KSHARRAYS}"
+      print -r -- "autocd:${options[autocd]}"
+    } >"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${TMP_ROOT}"
+
+  # The caller keeps the options it had.
+  contains "${values_log}" 'caller_split:on'
+  contains "${values_log}" 'caller_ksharrays:on'
+  # zi.zsh is sourced with sane parsing options regardless of the caller.
+  contains "${values_log}" 'inner_split:off'
+  contains "${values_log}" 'inner_ksharrays:off'
+  # zi.zsh's intentional global effect survives the loader.
+  contains "${values_log}" 'autocd:on'
+  pass "loader guards parsing options without discarding Zi's global effects"
+}
+
+test_init_history_opt_out() {
+  values_log="${TMP_ROOT}/init-history-values"
+  history_home="${TMP_ROOT}/history-home"
+  command mkdir -p "${history_home}"
+
+  zsh -f -c '
+    export HOME="$3"
+    export XDG_STATE_HOME="$3/state"
+    typeset -ghA ZI
+    ZI[LOADER_HISTORY]=0
+    source "$1"
+    {
+      print -r -- "histfile:${HISTFILE:-<unset>}"
+      print -r -- "statedir:$([[ -d $XDG_STATE_HOME/zsh ]] && print present || print absent)"
+    } >"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${history_home}"
+
+  contains "${values_log}" 'histfile:<unset>'
+  contains "${values_log}" 'statedir:absent'
+  pass "ZI[LOADER_HISTORY]=0 suppresses history defaults and filesystem writes"
+}
+
+test_init_rejects_invalid_stream() {
+  values_log="${TMP_ROOT}/init-stream-values"
+  err_log="${TMP_ROOT}/init-stream-err"
+
+  # An option-like ZI[STREAM] must never reach `git clone --branch`.
+  zsh -f -c '
+    typeset -ghA ZI
+    ZI[HOME_DIR]="$4/stream-home"
+    ZI[BIN_DIR]="$4/stream-home/bin"
+    ZI[STREAM]="--upload-pack=touch $4/stream-pwned"
+    source "$1"
+    zzinit 2>"$3"
+    print -r -- "status:$?" >"$2"
+    print -r -- "retryable:${+functions[zzinit]}" >>"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${err_log}" "${TMP_ROOT}"
+
+  contains "${values_log}" 'status:1'
+  # A failed run keeps zzinit defined so the user can fix and retry.
+  contains "${values_log}" 'retryable:1'
+  contains "${err_log}" 'not a valid ref name'
+  [ -e "${TMP_ROOT}/stream-pwned" ] && fail "invalid ZI[STREAM] reached git clone"
+  pass "invalid ZI[STREAM] is rejected before reaching git"
+}
+
+test_init_progress_filter_url() {
+  # The loader downloads this file and executes it. A 404 previously aborted
+  # every clean install with no diagnostic, so the path is asserted here.
+  contains "${ROOT}/public/zsh/init.zsh" \
+    'https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh'
+  pass "progress filter URL points at the published path"
+}
+
+test_init_uses_private_tempdir() {
+  # A fixed ${TMPDIR}/zi path would let another user pre-place the executable
+  # that the loader downloads, chmods, and runs.
+  if grep -F '${TMPDIR:-/tmp}/zi"' "${ROOT}/public/zsh/init.zsh" >/dev/null 2>&1; then
+    fail "loader uses a predictable temporary directory"
+  fi
+  contains "${ROOT}/public/zsh/init.zsh" 'mktemp -d'
+  pass "loader downloads the progress filter into a private temporary directory"
+}
+
+test_init_path_resolution() {
+  values_log="${TMP_ROOT}/init-path-values"
+  cases_root="${TMP_ROOT}/init path cases"
+  command mkdir -p "${cases_root}"
+
+  zsh -f -c '
+    run_case() (
+      builtin emulate -LR zsh
+      local label="$1" root="$3/$1" expected_bin
+      command mkdir -p "$root/home" "$root/zdotdir"
+      typeset -gx HOME="$root/home"
+      typeset -gx ZDOTDIR="$root/zdotdir"
+      unset XDG_DATA_HOME XDG_CACHE_HOME XDG_CONFIG_HOME
+      typeset -ghA ZI
+      ZI=([LOADER_HISTORY]=0)
+
+      case "$label" in
+        fresh-spaces)
+          typeset -gx XDG_DATA_HOME="$root/data root"
+          ;;
+        empty)
+          typeset -gx XDG_DATA_HOME=""
+          ;;
+        relative)
+          typeset -gx XDG_DATA_HOME="relative data"
+          command mkdir -p "$ZDOTDIR/.zi/plugins"
+          ;;
+        legacy-only)
+          command mkdir -p "$HOME/.zi/plugins"
+          ;;
+        xdg-only)
+          typeset -gx XDG_DATA_HOME="$root/data"
+          command mkdir -p "$XDG_DATA_HOME/zi/plugins"
+          ;;
+        both-external)
+          typeset -gx XDG_DATA_HOME="$root/data"
+          command mkdir -p "$HOME/.zi/plugins" "$XDG_DATA_HOME/zi/plugins"
+          ;;
+        both-xdg-source)
+          typeset -gx XDG_DATA_HOME="$root/data"
+          command mkdir -p "$HOME/.zi/plugins" "$XDG_DATA_HOME/zi/bin" "$XDG_DATA_HOME/zi/plugins"
+          command touch "$XDG_DATA_HOME/zi/bin/zi.zsh"
+          ZI[BIN_DIR]="$XDG_DATA_HOME/zi/bin"
+          ;;
+        explicit)
+          typeset -gx XDG_DATA_HOME="$root/data"
+          ZI[HOME_DIR]="$root/explicit home"
+          ;;
+      esac
+
+      source "$2"
+      print -r -- "$label|${ZI[HOME_DIR]}|${ZI[BIN_DIR]}|${ZI[HOME_LAYOUT]}|${ZI[CACHE_DIR]:-<unset>}|${ZI[CONFIG_DIR]:-<unset>}"
+    )
+
+    for label in fresh-spaces empty relative legacy-only xdg-only both-external both-xdg-source explicit; do
+      run_case "$label" "$1" "$2"
+    done
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${cases_root}" >"${values_log}"
+
+  contains "${values_log}" "fresh-spaces|${cases_root}/fresh-spaces/data root/zi|${cases_root}/fresh-spaces/data root/zi/bin|xdg|<unset>|<unset>"
+  contains "${values_log}" "empty|${cases_root}/empty/home/.local/share/zi|${cases_root}/empty/home/.local/share/zi/bin|xdg|<unset>|<unset>"
+  contains "${values_log}" "relative|${cases_root}/relative/home/.local/share/zi|${cases_root}/relative/home/.local/share/zi/bin|xdg|<unset>|<unset>"
+  contains "${values_log}" "legacy-only|${cases_root}/legacy-only/home/.zi|${cases_root}/legacy-only/home/.zi/bin|legacy|<unset>|<unset>"
+  contains "${values_log}" "xdg-only|${cases_root}/xdg-only/data/zi|${cases_root}/xdg-only/data/zi/bin|xdg|<unset>|<unset>"
+  contains "${values_log}" "both-external|${cases_root}/both-external/home/.zi|${cases_root}/both-external/home/.zi/bin|ambiguous-legacy|<unset>|<unset>"
+  contains "${values_log}" "both-xdg-source|${cases_root}/both-xdg-source/data/zi|${cases_root}/both-xdg-source/data/zi/bin|ambiguous-xdg|<unset>|<unset>"
+  contains "${values_log}" "explicit|${cases_root}/explicit/explicit home|${cases_root}/explicit/explicit home/bin|explicit|<unset>|<unset>"
+  pass "loader mirrors the core home resolver and leaves cache and config to Zi"
+}
+
 write_fake_tools() {
   FAKE_BIN="${TMP_ROOT}/bin"
   command mkdir -p "${FAKE_BIN}"
@@ -237,7 +419,7 @@ test_loader_install() {
   # shellcheck disable=SC2016
   contains "${config}/zi/init.zsh" ': "${ZI[STREAM]:=feature/test}"'
   # shellcheck disable=SC2016
-  contains "${home}/.zshrc" 'source "${XDG_CONFIG_HOME:-${HOME}/.config}/zi/init.zsh" && zzinit'
+  contains "${home}/.zshrc" 'source "${ZI_LOADER_CONFIG_HOME}/init.zsh" && zzinit'
   [ -f "${data}/zi/bin/zi.zsh" ] || fail "loader install did not clone Zi into XDG data home"
   pass "loader install uses XDG paths and branch override"
 }
@@ -256,6 +438,82 @@ test_xdg_data_home_install() {
 
   [ -f "${data}/zi/bin/zi.zsh" ] || fail "install did not create the XDG data home"
   pass "XDG data home install creates parent directories"
+}
+
+test_legacy_home_install() {
+  home="${TMP_ROOT}/legacy-home"
+  data="${TMP_ROOT}/legacy-data"
+  command mkdir -p "${home}/.zi/plugins"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null
+
+  [ -f "${home}/.zi/bin/zi.zsh" ] || fail "installer did not retain the legacy Zi home"
+  [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "installer created a parallel XDG installation"
+  pass "legacy-only install remains in the legacy Zi home"
+}
+
+test_relative_xdg_fallback_install() {
+  home="${TMP_ROOT}/relative-home"
+  work="${TMP_ROOT}/relative-work"
+  command mkdir -p "${home}" "${work}"
+
+  (
+    cd "${work}" || exit 1
+    HOME="${home}" \
+      ZDOTDIR="${home}" \
+      XDG_CONFIG_HOME="relative-config" \
+      XDG_DATA_HOME="relative-data" \
+      ZI_SRC_TEST_ROOT="${ROOT}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh "${ROOT}/public/sh/install.sh" -a loader -i skip >/dev/null
+  )
+
+  [ -f "${home}/.local/share/zi/bin/zi.zsh" ] || fail "relative XDG data value did not use fallback"
+  [ -f "${home}/.config/zi/init.zsh" ] || fail "relative XDG config value did not use fallback"
+  [ ! -e "${work}/relative-data" ] || fail "relative XDG data path was created"
+  [ ! -e "${work}/relative-config" ] || fail "relative XDG config path was created"
+  pass "relative XDG installer values use specification fallbacks"
+}
+
+test_both_present_install_identity() {
+  home="${TMP_ROOT}/both-home"
+  data="${TMP_ROOT}/both-data"
+  command mkdir -p "${home}/.zi/plugins" "${data}/zi/bin/.git"
+  printf '%s\n' '# fake zi.zsh' >"${data}/zi/bin/zi.zsh"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null
+
+  [ ! -e "${home}/.zi/bin" ] || fail "installer ignored the existing XDG source identity"
+  [ -f "${data}/zi/bin/zi.zsh" ] || fail "installer did not retain the XDG source identity"
+  pass "both-present installer selection follows existing source identity"
+}
+
+test_explicit_home_install() {
+  home="${TMP_ROOT}/explicit-home"
+  data="${TMP_ROOT}/explicit-data"
+  explicit="${TMP_ROOT}/explicit Zi root"
+  command mkdir -p "${home}" "${data}/zi/plugins"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_HOME="${explicit}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null
+
+  [ -f "${explicit}/bin/zi.zsh" ] || fail "explicit ZI_HOME was not preserved"
+  pass "explicit installer home wins and preserves spaces"
 }
 
 test_standalone_zpmod_delegation() {
@@ -378,9 +636,19 @@ test_sync_init() {
 check_syntax
 check_checksums
 test_init_defaults_are_single_arguments
+test_init_preserves_caller_options
+test_init_history_opt_out
+test_init_rejects_invalid_stream
+test_init_progress_filter_url
+test_init_uses_private_tempdir
+test_init_path_resolution
 write_fake_tools
 test_loader_install
 test_xdg_data_home_install
+test_legacy_home_install
+test_relative_xdg_fallback_install
+test_both_present_install_identity
+test_explicit_home_install
 test_standalone_zpmod_delegation
 test_update_valid_zi_clone
 test_update_rejects_foreign_repo

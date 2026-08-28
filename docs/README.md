@@ -53,6 +53,42 @@
 - **Installer**: [get.zshell.dev](https://get.zshell.dev)
 - **jsDeliver CDN**: [cdn.jsdelivr.net/gh/z-shell/src@main/](https://cdn.jsdelivr.net/gh/z-shell/src@main/)
 
+### Loader configuration
+
+`public/zsh/init.zsh` defines `zzinit()`. Sourcing the file only declares the
+function and applies defaults; nothing is cloned, sourced, or written until
+`zzinit` is called.
+
+The loader owns only the settings that must exist before Zi does:
+
+| Setting             | Default                                      | Purpose                      |
+| ------------------- | -------------------------------------------- | ---------------------------- |
+| `ZI[REPOSITORY]`    | `https://github.com/z-shell/zi.git`          | Clone source                 |
+| `ZI[STREAM]`        | `main`                                       | Branch or tag to clone       |
+| `ZI[HOME_DIR]`      | Legacy home, otherwise XDG data `zi` root    | Working-directory root       |
+| `ZI[BIN_DIR]`       | `${ZI[HOME_DIR]}/bin`                        | Where `zi.zsh` is cloned     |
+| `ZI[MUTE_WARNINGS]` | `0`                                          | Loader warning control       |
+
+The loader mirrors Zi core's home-resolution contract because it must find or
+clone `zi.zsh` before core can run. An explicit `ZI[HOME_DIR]` wins. A
+recognized legacy `$HOME/.zi` installation stays active. Otherwise the loader
+uses `${XDG_DATA_HOME}/zi` when `XDG_DATA_HOME` is absolute, or
+`$HOME/.local/share/zi` when it is unset, empty, or relative. When both homes
+contain Zi data, an explicit or unique existing `BIN_DIR` identity selects the
+matching home; otherwise the conservative fallback is the legacy home. No
+automatic move or merge occurs.
+
+`ZI[CACHE_DIR]`, `ZI[CONFIG_DIR]`, and every other Zi path are owned and
+derived by `zi.zsh`. Set one in `.zshrc` before sourcing the loader to override
+it; do not add a duplicate default to the loader. See the
+[customization guide](https://wiki.zshell.dev/docs/guides/customization#customizing-paths).
+
+One loader-only toggle exists:
+
+| Setting               | Default | Purpose                                                     |
+| --------------------- | ------- | ----------------------------------------------------------- |
+| `ZI[LOADER_HISTORY]`  | `1`     | Set to `0` to leave `HISTFILE`/`SAVEHIST`/`HISTSIZE` alone   |
+
 ### Maintainer — Verify and Sync Loader
 
 Check whether the local `public/zsh/init.zsh` matches the canonical GitHub raw `main` copy:

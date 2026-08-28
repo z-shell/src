@@ -1,0 +1,47 @@
+---
+name: Loader Drift
+# Verify that the published loader endpoint serves the same bytes as the
+# loader source on main.
+#
+# The former "init.zsh sync drift" step in check-linux.yml passed
+# --local and --remote as the same checked-out file, so it could never
+# detect drift. The meaningful comparison is repository source against the
+# published artifact, which only exists after a deployment.
+on:
+  workflow_run:
+    workflows: ["GitHub Pages"]
+    types: [completed]
+  schedule:
+    # Daily, offset off the hour to avoid the scheduler peak.
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  published-loader:
+    name: Published loader matches source
+    if: github.repository == 'z-shell/src'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - name: "⚙️ Check: published loader endpoint"
+        run: |
+          sh ./public/sh/sync-init.sh \
+            --local ./public/zsh/init.zsh \
+            --remote https://init.zshell.dev \
+            --checksum-url ./public/checksum.txt
+      - name: "⚙️ Check: raw main loader endpoint"
+        run: |
+          sh ./public/sh/sync-init.sh \
+            --local ./public/zsh/init.zsh \
+            --checksum-url ./public/checksum.txt

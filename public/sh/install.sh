@@ -102,8 +102,27 @@ fetch_to_file() {
   return 1
 }
 
+is_absolute_path() {
+  case "${1-}" in
+    /*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+zi_home_has_installation() {
+  [ -f "$1/bin/zi.zsh" ] ||
+    [ -d "$1/plugins" ] ||
+    [ -d "$1/snippets" ] ||
+    [ -d "$1/completions" ] ||
+    [ -d "$1/zmodules" ]
+}
+
 if [ "${AOPT}" = loader ]; then
-  ZI_CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/zi"
+  if is_absolute_path "${XDG_CONFIG_HOME-}"; then
+    ZI_CONFIG_DIR="${XDG_CONFIG_HOME}/zi"
+  else
+    ZI_CONFIG_DIR="${HOME}/.config/zi"
+  fi
   loader_tmp="${WORKDIR}/init.zsh.tmp"
   command mkdir -p "${ZI_CONFIG_DIR}"
   set +e
@@ -124,7 +143,30 @@ if [ "${AOPT}" = loader ]; then
 fi
 
 if [ -z "${ZI_HOME-}" ]; then
-  ZI_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zi"
+  if is_absolute_path "${XDG_DATA_HOME-}"; then
+    _zi_data_base="${XDG_DATA_HOME}"
+  else
+    _zi_data_base="${HOME}/.local/share"
+  fi
+  _zi_legacy_home="${HOME}/.zi"
+  _zi_xdg_home="${_zi_data_base}/zi"
+  _zi_legacy_present=0
+  _zi_xdg_present=0
+  zi_home_has_installation "${_zi_legacy_home}" && _zi_legacy_present=1
+  zi_home_has_installation "${_zi_xdg_home}" && _zi_xdg_present=1
+
+  if [ "${_zi_legacy_present}" -eq 1 ] && [ "${_zi_xdg_present}" -eq 1 ]; then
+    if [ -f "${_zi_xdg_home}/bin/zi.zsh" ] && [ ! -f "${_zi_legacy_home}/bin/zi.zsh" ]; then
+      ZI_HOME="${_zi_xdg_home}"
+    else
+      ZI_HOME="${_zi_legacy_home}"
+      printf '%s\n' "Zi installer: both legacy and XDG homes were detected; retaining ${ZI_HOME}. Set ZI_HOME explicitly to select another root. No data was moved." >&2
+    fi
+  elif [ "${_zi_legacy_present}" -eq 1 ]; then
+    ZI_HOME="${_zi_legacy_home}"
+  else
+    ZI_HOME="${_zi_xdg_home}"
+  fi
 fi
 
 if [ -z "${ZI_BIN_DIR_NAME-}" ]; then
@@ -133,7 +175,7 @@ fi
 
 if ! test -d "${ZI_HOME}"; then
   command mkdir -p "${ZI_HOME}"
-  command chmod go-w "${ZI_HOME}"
+  command chmod 700 "${ZI_HOME}"
 fi
 
 if ! command -v git >/dev/null 2>&1; then
@@ -207,7 +249,7 @@ MAIN_PROFILE() {
 if [[ ! -f ${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh ]]; then
   print -P "%F{33}▓▒░ %F{160}Installing (%F{33}z-shell/zi%F{160})…%f"
   command mkdir -p "${ZI_HOME}" && command chmod go-rwX "${ZI_HOME}"
-  command git clone -q --depth=1 --branch "${BOPT}" https://github.com/z-shell/zi "${ZI_HOME}/${ZI_BIN_DIR_NAME}" && \\
+  command git clone -q --filter=blob:none --single-branch --branch "${BOPT}" https://github.com/z-shell/zi "${ZI_HOME}/${ZI_BIN_DIR_NAME}" && \\
     print -P "%F{33}▓▒░ %F{34}Installation successful.%f%b" || \\
     print -P "%F{160}▓▒░ The clone has failed.%f%b"
 fi
@@ -221,9 +263,15 @@ EOF
   fi
   if [ "${AOPT}" = loader ] && [ "${ZOPT}" != skip ]; then
     command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
-if [[ -r "\${XDG_CONFIG_HOME:-\${HOME}/.config}/zi/init.zsh" ]]; then
-  source "\${XDG_CONFIG_HOME:-\${HOME}/.config}/zi/init.zsh" && zzinit
+if [[ -n \${XDG_CONFIG_HOME:-} && \${XDG_CONFIG_HOME} == /* ]]; then
+  ZI_LOADER_CONFIG_HOME="\${XDG_CONFIG_HOME}/zi"
+else
+  ZI_LOADER_CONFIG_HOME="\${HOME}/.config/zi"
 fi
+if [[ -r "\${ZI_LOADER_CONFIG_HOME}/init.zsh" ]]; then
+  source "\${ZI_LOADER_CONFIG_HOME}/init.zsh" && zzinit
+fi
+unset ZI_LOADER_CONFIG_HOME
 EOF
     printf '%s\n' "[34m▓▒░[0m[1;36m Loader added[0m"
   fi
