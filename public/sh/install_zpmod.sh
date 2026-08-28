@@ -74,6 +74,12 @@ build_zpmod_module() {
         cd "${MOD_HOME}" || exit 1
         printf '%s\n' "${col_pname}== The module sources are located at: ${MOD_HOME} ==${col_rst}"
         if test -f CMakeLists.txt; then
+          for _required_command in autoconf cc cmake make; do
+            if ! command -v "${_required_command}" >/dev/null 2>&1; then
+              printf '%s\n' "${col_error}Required build command not found: ${_required_command}.${col_rst}"
+              exit 1
+            fi
+          done
           printf '%s\n' "${col_pname}== Building module ZPMOD with CMake ==${col_rst}"
           _clean_arg=""
           if [ "${1-}" = "--clean" ]; then
