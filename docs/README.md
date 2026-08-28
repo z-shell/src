@@ -59,41 +59,29 @@
 function and applies defaults; nothing is cloned, sourced, or written until
 `zzinit` is called.
 
-The loader owns the settings that must exist before Zi does:
+The loader owns only the settings that must exist before Zi does:
 
-| Setting            | Default                                     | Purpose                          |
-| ------------------ | ------------------------------------------- | -------------------------------- |
-| `ZI[REPOSITORY]`   | `https://github.com/z-shell/zi.git`         | Clone source                     |
-| `ZI[STREAM]`       | `main`                                      | Branch or tag to clone           |
-| `ZI[HOME_DIR]`     | `${XDG_DATA_HOME:-$HOME/.local/share}/zi`   | Working-directory root           |
-| `ZI[BIN_DIR]`      | `${ZI[HOME_DIR]}/bin`                       | Where `zi.zsh` is cloned         |
-| `ZI[CACHE_DIR]`    | `${XDG_CACHE_HOME:-$HOME/.cache}/zi`        | Cache root, strict XDG           |
-| `ZI[CONFIG_DIR]`   | `${XDG_CONFIG_HOME:-$HOME/.config}/zi`      | Config root, strict XDG          |
-| `ZI[MUTE_WARNINGS]`| `0`                                         | Read directly by user config     |
+| Setting             | Default                                      | Purpose                      |
+| ------------------- | -------------------------------------------- | ---------------------------- |
+| `ZI[REPOSITORY]`    | `https://github.com/z-shell/zi.git`          | Clone source                 |
+| `ZI[STREAM]`        | `main`                                       | Branch or tag to clone       |
+| `ZI[HOME_DIR]`      | Legacy home, otherwise XDG data `zi` root    | Working-directory root       |
+| `ZI[BIN_DIR]`       | `${ZI[HOME_DIR]}/bin`                        | Where `zi.zsh` is cloned     |
+| `ZI[MUTE_WARNINGS]` | `0`                                          | Loader warning control       |
 
-`ZI[CACHE_DIR]` and `ZI[CONFIG_DIR]` are deliberately kept here rather than
-left to `zi.zsh`. Zi does not currently resolve these two XDG-first: it prefers
-`$HOME/.cache` and `$HOME/.config` whenever those directories exist and only
-consults `XDG_CACHE_HOME`/`XDG_CONFIG_HOME` otherwise. Removing them today
-would relocate the cache of every user who sets the XDG variables while still
-having the legacy directories present.
+The loader mirrors Zi core's home-resolution contract because it must find or
+clone `zi.zsh` before core can run. An explicit `ZI[HOME_DIR]` wins. A
+recognized legacy `$HOME/.zi` installation stays active. Otherwise the loader
+uses `${XDG_DATA_HOME}/zi` when `XDG_DATA_HOME` is absolute, or
+`$HOME/.local/share/zi` when it is unset, empty, or relative. When both homes
+contain Zi data, an explicit or unique existing `BIN_DIR` identity selects the
+matching home; otherwise the conservative fallback is the legacy home. No
+automatic move or merge occurs.
 
-Zi is adopting XDG-first resolution. Once that is released these two
-assignments become redundant rather than wrong, since both sides resolve to the
-same paths. Remove them only after the released `zi.zsh` resolves both
-XDG-first, and keep `test_init_xdg_paths_are_strict` either way.
-
-Every other `ZI[...]` key is owned by `zi.zsh` and derived from those values
-with identical definitions. Set one in `.zshrc` before sourcing the loader to
-override it; do not add a duplicate default to the loader. See the
+`ZI[CACHE_DIR]`, `ZI[CONFIG_DIR]`, and every other Zi path are owned and
+derived by `zi.zsh`. Set one in `.zshrc` before sourcing the loader to override
+it; do not add a duplicate default to the loader. See the
 [customization guide](https://wiki.zshell.dev/docs/guides/customization#customizing-paths).
-
-`ZI[HOME_DIR]` is the one deliberate divergence: the loader defaults to the XDG
-path, while `zi.zsh`'s current fallback for an unset value is `${HOME}/.zi`.
-The loader always assigns the value before `zi.zsh` runs, so they never
-disagree within a session, but a direct `source zi.zsh` without the loader uses
-the other layout. Zi's in-progress XDG-first work is expected to close this
-gap; the loader already uses the intended destination.
 
 One loader-only toggle exists:
 

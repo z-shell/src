@@ -11,9 +11,15 @@
 # Sourcing this file only defines zzinit(). Nothing is cloned, sourced, or
 # written until zzinit() is called:
 #
-#   if [[ -r "${XDG_CONFIG_HOME:-${HOME}/.config}/zi/init.zsh" ]]; then
-#     source "${XDG_CONFIG_HOME:-${HOME}/.config}/zi/init.zsh" && zzinit
+#   if [[ -n ${XDG_CONFIG_HOME:-} && $XDG_CONFIG_HOME == /* ]]; then
+#     ZI_LOADER_CONFIG_HOME="$XDG_CONFIG_HOME/zi"
+#   else
+#     ZI_LOADER_CONFIG_HOME="$HOME/.config/zi"
 #   fi
+#   if [[ -r "$ZI_LOADER_CONFIG_HOME/init.zsh" ]]; then
+#     source "$ZI_LOADER_CONFIG_HOME/init.zsh" && zzinit
+#   fi
+#   unset ZI_LOADER_CONFIG_HOME
 #
 # Documented global effects of zzinit():
 #   - sources zi.zsh, which owns its own documented global effects
@@ -33,23 +39,62 @@ typeset -ghA ZI
 # clone and where. See https://wiki.zshell.dev/docs/guides/customization
 : "${ZI[REPOSITORY]:=https://github.com/z-shell/zi.git}"
 : "${ZI[STREAM]:=main}"
-: "${ZI[HOME_DIR]:=${XDG_DATA_HOME:-$HOME/.local/share}/zi}"
-: "${ZI[BIN_DIR]:=${ZI[HOME_DIR]}/bin}"
 
-# Strict XDG placement. These are kept because zi.zsh does not currently
-# resolve these two XDG-first: it prefers $HOME/.cache and $HOME/.config
-# whenever those exist and only consults XDG_CACHE_HOME / XDG_CONFIG_HOME
-# otherwise. Dropping them today would silently relocate the cache of every
-# user who sets the XDG variables while still having the legacy directories
-# present.
-#
-# Zi is adopting XDG-first resolution. Once released, these two assignments
-# become redundant rather than wrong: they resolve to the same paths, so the
-# loader keeps working unchanged. Remove them only after the released zi.zsh
-# resolves both XDG-first, and keep the regression test that pins the expected
-# paths either way.
-: "${ZI[CACHE_DIR]:=${XDG_CACHE_HOME:-$HOME/.cache}/zi}"
-: "${ZI[CONFIG_DIR]:=${XDG_CONFIG_HOME:-$HOME/.config}/zi}"
+# The loader needs HOME_DIR and BIN_DIR before Zi exists so it knows where to
+# find or clone zi.zsh. Mirror Zi's home-resolution contract exactly, without
+# creating directories: explicit values win, a recognized legacy home stays
+# active, and fresh installs use an absolute XDG data base or its fallback.
+# Cache and config remain unset here and are resolved by zi.zsh itself.
+() {
+  builtin emulate -L zsh
+
+  local data_base legacy_home xdg_home marker requested_bin="${ZI[BIN_DIR]}"
+  integer legacy_present=0 xdg_present=0
+
+  if [[ -n $XDG_DATA_HOME && $XDG_DATA_HOME == /* ]]; then
+    data_base="$XDG_DATA_HOME"
+  else
+    data_base="${HOME}/.local/share"
+  fi
+  legacy_home="${HOME}/.zi"
+  xdg_home="${data_base}/zi"
+
+  if [[ -z ${ZI[HOME_DIR]} ]]; then
+    for marker in bin/zi.zsh plugins snippets completions zmodules; do
+      if [[ -e "${legacy_home}/${marker}" ]]; then
+        legacy_present=1
+        break
+      fi
+    done
+    for marker in bin/zi.zsh plugins snippets completions zmodules; do
+      if [[ -e "${xdg_home}/${marker}" ]]; then
+        xdg_present=1
+        break
+      fi
+    done
+
+    if (( legacy_present && xdg_present )); then
+      if [[ $requested_bin == "${xdg_home}/bin" || $requested_bin == "${xdg_home}/bin/"* ]] ||
+        [[ -z $requested_bin && -e "${xdg_home}/bin/zi.zsh" && ! -e "${legacy_home}/bin/zi.zsh" ]]; then
+        ZI[HOME_DIR]="$xdg_home"
+        ZI[HOME_LAYOUT]=ambiguous-xdg
+      else
+        ZI[HOME_DIR]="$legacy_home"
+        ZI[HOME_LAYOUT]=ambiguous-legacy
+      fi
+    elif (( legacy_present )); then
+      ZI[HOME_DIR]="$legacy_home"
+      ZI[HOME_LAYOUT]=legacy
+    else
+      ZI[HOME_DIR]="$xdg_home"
+      ZI[HOME_LAYOUT]=xdg
+    fi
+  elif [[ -z ${ZI[HOME_LAYOUT]} ]]; then
+    ZI[HOME_LAYOUT]=explicit
+  fi
+
+  [[ -n ${ZI[BIN_DIR]} ]] || ZI[BIN_DIR]="${ZI[HOME_DIR]}/bin"
+}
 
 # Retained for compatibility: user configuration and third-party plugins read
 # this value directly, so it must be defined rather than merely defaulted
@@ -57,22 +102,13 @@ typeset -ghA ZI
 : "${ZI[MUTE_WARNINGS]:=0}"
 
 # NOTE ON DEFAULTS
-# The settings above are loader policy: they decide what to clone, where it
-# lands, and which base directories are used. Zi's current fallback for an
-# unset ZI[HOME_DIR] is ${HOME}/.zi, so a direct `source zi.zsh` without this
-# loader produces a different layout. The loader always assigns these before
-# zi.zsh runs, so the two never disagree within one session. Zi's in-progress
-# XDG-first work is expected to close this gap; the loader's XDG values are
-# already the intended destination, so no change is needed here when it lands.
+# Every other ZI[...] key is owned by zi.zsh. Do not duplicate defaults here;
+# set a value in .zshrc before this file is sourced if you want to override it.
+# The full set zi.zsh honours includes:
 #
-# Every other ZI[...] key is owned by zi.zsh and derived from the values above,
-# with identical definitions. Do not duplicate them here; set them in .zshrc
-# before this file is sourced if you want to override one. The full set zi.zsh
-# honours:
-#
-#   Paths        COMPLETIONS_DIR PLUGINS_DIR SNIPPETS_DIR SERVICES_DIR
-#                THEMES_DIR ZMODULES_DIR MAN_DIR LOG_DIR MAIL_DIR CDPATH_DIR
-#                ZCOMPDUMP_PATH ZPFX
+#   Paths        CACHE_DIR CONFIG_DIR COMPLETIONS_DIR PLUGINS_DIR SNIPPETS_DIR
+#                SERVICES_DIR THEMES_DIR ZMODULES_DIR MAN_DIR LOG_DIR MAIL_DIR
+#                CDPATH_DIR ZCOMPDUMP_PATH ZPFX
 #   Behaviour    OPTIMIZE_OUT_DISK_ACCESSES COMPINIT_OPTS INTERNAL_ALIASES
 #                PKG_OWNER
 #
