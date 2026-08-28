@@ -10,11 +10,6 @@ on:
       - ".github/workflows/check-linux.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "public/sh/**"
-      - "public/zsh/**"
-      - "tests/**"
-      - ".github/workflows/check-linux.yml"
   workflow_dispatch:
 
 permissions:
@@ -26,6 +21,7 @@ concurrency:
 
 jobs:
   shellcheck:
+    name: Linux ShellCheck
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -37,6 +33,7 @@ jobs:
           scandir: "./public/sh"
 
   build:
+    name: Linux Installer and Loader
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [shellcheck]

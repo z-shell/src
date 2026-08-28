@@ -11,11 +11,6 @@ on:
       - ".github/workflows/check-macos.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "public/sh/**"
-      - "public/zsh/**"
-      - "tests/**"
-      - ".github/workflows/check-macos.yml"
   workflow_dispatch:
 
 permissions:
@@ -27,6 +22,7 @@ concurrency:
 
 jobs:
   shellcheck:
+    name: macOS ShellCheck
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -38,6 +34,7 @@ jobs:
           scandir: "./public/sh"
 
   build:
+    name: macOS Installer and Loader
     runs-on: macos-latest
     timeout-minutes: 30
     needs: [shellcheck]
