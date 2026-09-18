@@ -295,7 +295,7 @@ _zi_pmod() {
   module_path+=( "$module_dir" )
   if ! zmodload zi/zpmod 2>/dev/null; then
     [[ ${ZI[MUTE_WARNINGS]} == 1 ]] ||
-      _zi_err "zpmod.so is present but zmodload zi/zpmod failed; rebuild it with \`zi module build\`."
+      _zi_err "zpmod.so is present but zmodload zi/zpmod failed; rebuild it with \`zi module build\`, then run \`zzinit\` again."
     return 1
   fi
   return 0
@@ -329,8 +329,11 @@ zzinit() {
   _zi_pmod
   status_pmod=$?
 
+  # Zi is usable at this point, but an optional stage reported a problem. Keep
+  # the helpers so the diagnostics above can be acted on and zzinit re-run.
+  (( status_comps == 0 && status_pmod == 0 )) || return 1
+
   # Helpers are only removed on success so a failed run stays retryable.
   unset -f _zi_err _zi_fetch _zi_check_stream _zi_setup _zi_source _zi_comps _zi_pmod zzinit 2>/dev/null
-
-  (( status_comps == 0 && status_pmod == 0 ))
+  return 0
 }

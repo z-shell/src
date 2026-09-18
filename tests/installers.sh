@@ -191,6 +191,45 @@ test_init_rejects_invalid_stream() {
   pass "invalid ZI[STREAM] is rejected before reaching git"
 }
 
+test_init_keeps_helpers_when_zpmod_fails() {
+  values_log="${TMP_ROOT}/init-zpmod-values"
+  err_log="${TMP_ROOT}/init-zpmod-err"
+
+  # zi.zsh loads, but an optional stage fails: zpmod.so exists and cannot be
+  # loaded. The helpers and zzinit itself must survive so that, once the module
+  # is rebuilt, the advertised `zzinit` retry has something to call.
+  zsh -f -c '
+    typeset -ghA ZI
+    ZI[LOADER_HISTORY]=0
+    ZI[HOME_DIR]="$4/zpmod-home"
+    ZI[BIN_DIR]="$4/zpmod-home/bin"
+    module_dir="${ZI[HOME_DIR]}/zmodules/zpmod/Src/zi"
+    command mkdir -p "${ZI[BIN_DIR]}" "$module_dir"
+    print -r -- "# fake zi.zsh" > "${ZI[BIN_DIR]}/zi.zsh"
+    # A file that is not a shared object: zmodload refuses it.
+    print -r -- "not a shared object" > "$module_dir/zpmod.so"
+
+    source "$1"
+    zzinit 2>"$3"
+    print -r -- "first_status:$?" >"$2"
+    print -r -- "first_retryable:${+functions[zzinit]}" >>"$2"
+
+    command rm -f -- "$module_dir/zpmod.so"
+    zzinit 2>>"$3"
+    print -r -- "second_status:$?" >>"$2"
+    print -r -- "second_retryable:${+functions[zzinit]}" >>"$2"
+  ' zsh "${ROOT}/public/zsh/init.zsh" "${values_log}" "${err_log}" "${TMP_ROOT}"
+
+  contains "${values_log}" 'first_status:1'
+  contains "${err_log}" 'rebuild it with'
+  # The failed run keeps zzinit defined so the user can rebuild and retry.
+  contains "${values_log}" 'first_retryable:1'
+  # The retry succeeds and only then removes the helpers.
+  contains "${values_log}" 'second_status:0'
+  contains "${values_log}" 'second_retryable:0'
+  pass "optional zpmod failure keeps zzinit retryable"
+}
+
 test_init_progress_filter_url() {
   # The loader downloads this file and executes it. A 404 previously aborted
   # every clean install with no diagnostic, so the path is asserted here.
@@ -639,6 +678,7 @@ test_init_defaults_are_single_arguments
 test_init_preserves_caller_options
 test_init_history_opt_out
 test_init_rejects_invalid_stream
+test_init_keeps_helpers_when_zpmod_fails
 test_init_progress_filter_url
 test_init_uses_private_tempdir
 test_init_path_resolution
