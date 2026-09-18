@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: z-shell/zsh-lint
-          ref: 1e8b0a6c02d4aa433e6aee8ca141e11ef62ba76b
+          ref: 999cb76cc65ef6af56c0ae65ab0f3622eb527944 # v1.3.0
           path: .zsh-lint-tool
           persist-credentials: false
       - name: Set up Go
