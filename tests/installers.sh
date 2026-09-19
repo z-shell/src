@@ -471,6 +471,13 @@ for arg; do
   esac
   [ "${arg}" != "-c" ] || break
 done
+# Whatever the burst sources must not run compinit: it aborts without a tty.
+for arg; do
+  if [ -f "${arg}" ] && grep -q '^zicompinit' "${arg}" 2>/dev/null; then
+    printf '%s\n' "zsh test double: burst sources zicompinit from ${arg}" >&2
+    exit 67
+  fi
+done
 [ -z "${ZI_SRC_TEST_ZSH_LOG:-}" ] || printf '%s\n' "zsh $*" >>"${ZI_SRC_TEST_ZSH_LOG}"
 EOF
 
@@ -787,6 +794,8 @@ test_annex_rerun_is_idempotent() {
   contains "${zsh_log}" 'zsh -f -c '
   contains "${zsh_log}" "${data}/zi/bin/zi.zsh"
   contains "${zsh_log}" 'temp-zsh-config'
+  # zicompinit reaches .zshrc, and only .zshrc.
+  contains "${home}/.zshrc" 'zicompinit'
   pass "annex profile is idempotent across reruns and never starts an interactive shell"
 }
 

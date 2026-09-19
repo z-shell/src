@@ -318,16 +318,21 @@ ANNEX_PROFILE() {
     printf '%s\n' "[34m▓▒░[0m[1;36m .zshrc already loads z-shell/z-a-meta-plugins - annex block not added again[0m"
     return 0
   fi
+  # The burst file holds only the recipe; zicompinit belongs to .zshrc and
+  # must not run in the non-interactive burst shell (compinit aborts there).
   file="${WORKDIR}/temp-zsh-config"
   if [ "${AOPT}" = annex ]; then
     command cat <<-EOF >"${file}"
 zi light-mode for \\
   z-shell/z-a-meta-plugins \\
   @annexes # <- https://wiki.zshell.dev/ecosystem/category/-annexes
+EOF
+    printf '%s\n' "[34m▓▒░[0m[1;36m Installing annexes[0m"
+    command cat "${file}" >>"${THE_ZDOTDIR}/.zshrc"
+    command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
 # examples here -> https://wiki.zshell.dev/community/gallery/collection
 zicompinit # <- https://wiki.zshell.dev/docs/guides/commands
 EOF
-    printf '%s\n' "[34m▓▒░[0m[1;36m Installing annexes[0m"
   else
     command cat <<-EOF >"${file}"
 zi light-mode for \\
@@ -335,8 +340,8 @@ zi light-mode for \\
   @annexes @zunit
 EOF
     printf '%s\n' "[34m▓▒░[0m[1;36m Installing annexes + zunit[0m"
+    command cat "${file}" >>"${THE_ZDOTDIR}/.zshrc"
   fi
-  command cat "${file}" >>"${THE_ZDOTDIR}/.zshrc"
   ANNEX_BURST "${file}"
 }
 
