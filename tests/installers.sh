@@ -471,6 +471,13 @@ for arg; do
   esac
   [ "${arg}" != "-c" ] || break
 done
+# Whatever the burst sources must not run compinit: it aborts without a tty.
+for arg; do
+  if [ -f "${arg}" ] && grep -q '^zicompinit' "${arg}" 2>/dev/null; then
+    printf '%s\n' "zsh test double: burst sources zicompinit from ${arg}" >&2
+    exit 67
+  fi
+done
 [ -z "${ZI_SRC_TEST_ZSH_LOG:-}" ] || printf '%s\n' "zsh $*" >>"${ZI_SRC_TEST_ZSH_LOG}"
 EOF
 
@@ -787,6 +794,11 @@ test_annex_rerun_is_idempotent() {
   contains "${zsh_log}" 'zsh -f -c '
   contains "${zsh_log}" "${data}/zi/bin/zi.zsh"
   contains "${zsh_log}" 'temp-zsh-config'
+  # The annex-specific zicompinit reaches .zshrc (directly after the gallery
+  # comment), not only the one the default block writes.
+  if ! grep -A1 -F '# examples here -> https://wiki.zshell.dev/community/gallery/collection' "${home}/.zshrc" | grep -q '^zicompinit'; then
+    fail "annex profile did not write zicompinit after its gallery comment"
+  fi
   pass "annex profile is idempotent across reruns and never starts an interactive shell"
 }
 
