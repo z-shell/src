@@ -471,7 +471,7 @@ for arg; do
   esac
   [ "${arg}" != "-c" ] || break
 done
-[ -z "${ZI_SRC_TEST_ZSH_LOG:-}" ] || printf '%s\n' "$*" >>"${ZI_SRC_TEST_ZSH_LOG}"
+[ -z "${ZI_SRC_TEST_ZSH_LOG:-}" ] || printf '%s\n' "zsh $*" >>"${ZI_SRC_TEST_ZSH_LOG}"
 EOF
 
   command chmod a+x "${FAKE_BIN}/curl" "${FAKE_BIN}/git" "${FAKE_BIN}/zsh"
@@ -783,7 +783,8 @@ test_annex_rerun_is_idempotent() {
   burst_lines="$(wc -l <"${zsh_log}" | tr -d ' ')"
   [ "${burst_lines}" -eq 1 ] || fail "expected one annex burst, saw ${burst_lines}"
   contains "${zsh_log}" '@zi-scheduler burst'
-  contains "${zsh_log}" '-f -c '
+  # Logged with argv0 so the pattern cannot be read as grep options.
+  contains "${zsh_log}" 'zsh -f -c '
   contains "${zsh_log}" "${data}/zi/bin/zi.zsh"
   contains "${zsh_log}" 'temp-zsh-config'
   pass "annex profile is idempotent across reruns and never starts an interactive shell"

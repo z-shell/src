@@ -264,6 +264,7 @@ MAIN_PROFILE() {
   fi
   # The .zshrc text refers to the home through $HOME; the installer itself
   # keeps using the real path.
+  # shellcheck disable=SC2016
   case "${ZI_HOME}" in
   "${HOME}") ZI_HOME_TEXT='$HOME' ;;
   "${HOME}"/*) ZI_HOME_TEXT="\$HOME${ZI_HOME#"${HOME}"}" ;;
