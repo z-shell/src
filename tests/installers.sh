@@ -400,6 +400,7 @@ if [ "${1:-}" = "-C" ]; then
 fi
 
 cmd="${1:-}"
+[ -z "${ZI_SRC_TEST_GIT_LOG:-}" ] || printf '%s\n' "$*" >>"${ZI_SRC_TEST_GIT_LOG}"
 [ "$#" -gt 0 ] && shift
 
 case "${cmd}" in
@@ -413,7 +414,24 @@ case "${cmd}" in
     printf '%s\n' '# fake zi.zsh' > "${dest}/zi.zsh"
     printf '%s\n' '# fake _zi completion' > "${dest}/lib/_zi"
     ;;
-  clean | reset | pull)
+  check-ref-format)
+    [ "${1:-}" = "--branch" ] || { printf '%s\n' "installers.sh git test double: expected --branch" >&2; exit 65; }
+    case "${2:-}" in
+      "" | -* | *:* | *..* | *[[:space:]]* | *~* | *^* | *\\* ) exit 1 ;;
+    esac
+    printf '%s\n' "$2"
+    ;;
+  fetch)
+    ;;
+  merge)
+    if [ "${ZI_SRC_TEST_FAKE_FF_FAIL:-0}" -ne 0 ]; then
+      printf '%s\n' "fatal: Not possible to fast-forward, aborting." >&2
+      exit 128
+    fi
+    ;;
+  status)
+    printf '%s\n' "## main...origin/main [ahead 1]"
+    printf '%s\n' " M zi.zsh"
     ;;
   log)
     printf '%s\n' 'abcdef0 - fake zi commit (now) <test>'
@@ -438,7 +456,25 @@ case "${cmd}" in
 esac
 EOF
 
-  command chmod a+x "${FAKE_BIN}/curl" "${FAKE_BIN}/git"
+  cat >"${FAKE_BIN}/zsh" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+
+# The installer must never start an interactive shell: that would execute the
+# user's own startup files with the installer's environment.
+for arg; do
+  case "${arg}" in
+    -i | -i?* | -?*i?*)
+      printf '%s\n' "zsh test double: interactive flag ${arg}" >&2
+      exit 66
+      ;;
+  esac
+  [ "${arg}" != "-c" ] || break
+done
+[ -z "${ZI_SRC_TEST_ZSH_LOG:-}" ] || printf '%s\n' "zsh $*" >>"${ZI_SRC_TEST_ZSH_LOG}"
+EOF
+
+  command chmod a+x "${FAKE_BIN}/curl" "${FAKE_BIN}/git" "${FAKE_BIN}/zsh"
 }
 
 test_loader_install() {
@@ -639,6 +675,194 @@ test_update_rejects_wrong_remote() {
   pass "update path rejects a repository with a non-zi remote origin"
 }
 
+test_update_fast_forwards_without_reset() {
+  home="${TMP_ROOT}/update-ff-home"
+  data="${TMP_ROOT}/update-ff-data"
+  zi_bin="${data}/zi/bin"
+  git_log="${TMP_ROOT}/update-ff-git-log"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    ZI_SRC_TEST_GIT_LOG="${git_log}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip -b feature/test >/dev/null
+
+  contains "${git_log}" 'fetch -q origin refs/heads/feature/test'
+  contains "${git_log}" 'merge -q --ff-only FETCH_HEAD'
+  if grep -E '^(clean|reset|pull)( |$)' "${git_log}" >/dev/null 2>&1; then
+    fail "update path still discards local state (clean, reset, or pull was invoked)"
+  fi
+  pass "update path fetches and fast-forwards without discarding local state"
+}
+
+test_update_refuses_non_fast_forward() {
+  home="${TMP_ROOT}/update-nonff-home"
+  data="${TMP_ROOT}/update-nonff-data"
+  zi_bin="${data}/zi/bin"
+  err="${TMP_ROOT}/update-nonff-err"
+  command mkdir -p "${home}" "${zi_bin}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${zi_bin}/zi.zsh"
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    ZI_SRC_TEST_FAKE_FF_FAIL=1 \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh should have refused a non-fast-forward update"
+  contains "${err}" 'cannot be fast-forwarded'
+  contains "${err}" 'local state was left untouched'
+  contains "${err}" ' M zi.zsh'
+  pass "update path refuses a non-fast-forward and shows the checkout state"
+}
+
+test_zshrc_comment_does_not_suppress_integration() {
+  home="${TMP_ROOT}/probe-home"
+  data="${TMP_ROOT}/probe-data"
+  command mkdir -p "${home}"
+  printf '%s\n' '# Zi is loaded from ~/.config/zi/init.zsh, see the wiki' >"${home}/.zshrc"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" >/dev/null
+
+  contains "${home}/.zshrc" "source \"${data}/zi/bin/zi.zsh\""
+  pass "a comment mentioning init.zsh does not suppress the .zshrc integration"
+
+  # A real source line is still detected and nothing is appended.
+  home2="${TMP_ROOT}/probe-home-sourced"
+  data2="${TMP_ROOT}/probe-data-sourced"
+  command mkdir -p "${home2}"
+  # shellcheck disable=SC2016
+  printf '%s\n' 'source "$HOME/.zi/bin/zi.zsh"' >"${home2}/.zshrc"
+  before="$(sha256_file "${home2}/.zshrc")"
+
+  HOME="${home2}" \
+    ZDOTDIR="${home2}" \
+    XDG_DATA_HOME="${data2}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" >/dev/null
+
+  [ "$(sha256_file "${home2}/.zshrc")" = "${before}" ] || fail "an existing source line did not suppress the integration block"
+  pass "an existing Zi source line keeps .zshrc unchanged"
+}
+
+test_annex_rerun_is_idempotent() {
+  home="${TMP_ROOT}/annex-home"
+  data="${TMP_ROOT}/annex-data"
+  zsh_log="${TMP_ROOT}/annex-zsh-log"
+  command mkdir -p "${home}"
+
+  for run in first second; do
+    HOME="${home}" \
+      ZDOTDIR="${home}" \
+      XDG_DATA_HOME="${data}" \
+      ZI_SRC_TEST_ROOT="${ROOT}" \
+      ZI_SRC_TEST_ZSH_LOG="${zsh_log}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh "${ROOT}/public/sh/install.sh" -a annex >/dev/null || fail "annex install (${run} run) failed"
+  done
+
+  meta_lines="$(grep -c 'z-shell/z-a-meta-plugins' "${home}/.zshrc")"
+  [ "${meta_lines}" -eq 1 ] || fail "annex block appended ${meta_lines} times across two runs"
+  contains "${home}/.zshrc" "source \"${data}/zi/bin/zi.zsh\""
+  # The burst ran once, non-interactively, sourcing only zi.zsh and the fragment.
+  burst_lines="$(wc -l <"${zsh_log}" | tr -d ' ')"
+  [ "${burst_lines}" -eq 1 ] || fail "expected one annex burst, saw ${burst_lines}"
+  contains "${zsh_log}" '@zi-scheduler burst'
+  # Logged with argv0 so the pattern cannot be read as grep options.
+  contains "${zsh_log}" 'zsh -f -c '
+  contains "${zsh_log}" "${data}/zi/bin/zi.zsh"
+  contains "${zsh_log}" 'temp-zsh-config'
+  pass "annex profile is idempotent across reruns and never starts an interactive shell"
+}
+
+test_skip_leaves_annex_out() {
+  home="${TMP_ROOT}/annex-skip-home"
+  data="${TMP_ROOT}/annex-skip-data"
+  zsh_log="${TMP_ROOT}/annex-skip-zsh-log"
+  command mkdir -p "${home}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    ZI_SRC_TEST_ZSH_LOG="${zsh_log}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip -a annex >/dev/null
+
+  [ ! -e "${home}/.zshrc" ] || fail "-i skip -a annex modified .zshrc"
+  [ ! -e "${zsh_log}" ] || fail "-i skip -a annex still ran the annex burst"
+  pass "-i skip leaves .zshrc untouched even with an annex profile"
+}
+
+test_branch_option_rejects_refspec() {
+  home="${TMP_ROOT}/branch-refspec-home"
+  data="${TMP_ROOT}/branch-refspec-data"
+  err="${TMP_ROOT}/branch-refspec-err"
+  command mkdir -p "${home}"
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip -b 'main:refs/heads/other' >/dev/null 2>"${err}"
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh accepted a refspec as -b"
+  contains "${err}" 'not a valid branch name'
+  [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "install proceeded after an invalid -b value"
+  pass "-b rejects values that are not a branch name"
+}
+
+test_zshrc_text_uses_home_variable() {
+  home="${TMP_ROOT}/home-text home"
+  sibling="${TMP_ROOT}/home-text home-sibling"
+  command mkdir -p "${home}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${home}/xdg data" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" >/dev/null
+
+  # shellcheck disable=SC2016
+  contains "${home}/.zshrc" 'source "$HOME/xdg data/zi/bin/zi.zsh"'
+  pass '.zshrc refers to a home under $HOME through the variable'
+
+  home2="${TMP_ROOT}/home-text-2"
+  command mkdir -p "${home2}"
+  HOME="${home2}" \
+    ZDOTDIR="${home2}" \
+    ZI_HOME="${sibling}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" >/dev/null
+
+  contains "${home2}/.zshrc" "source \"${sibling}/bin/zi.zsh\""
+  if grep -F '$HOME' "${home2}/.zshrc" >/dev/null 2>&1; then
+    fail 'a sibling of $HOME was rewritten as if it were inside it'
+  fi
+  pass '.zshrc keeps a literal path for a home that only shares a prefix with $HOME'
+}
+
 test_sync_init() {
   local_file="${TMP_ROOT}/local-init.zsh"
   remote_file="${TMP_ROOT}/remote-init.zsh"
@@ -693,4 +917,11 @@ test_standalone_zpmod_delegation
 test_update_valid_zi_clone
 test_update_rejects_foreign_repo
 test_update_rejects_wrong_remote
+test_update_fast_forwards_without_reset
+test_update_refuses_non_fast_forward
+test_zshrc_comment_does_not_suppress_integration
+test_annex_rerun_is_idempotent
+test_skip_leaves_annex_out
+test_branch_option_rejects_refspec
+test_zshrc_text_uses_home_variable
 test_sync_init
