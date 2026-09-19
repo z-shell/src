@@ -48,14 +48,37 @@ jobs:
         run: sh ./public/sh/generate-checksums.sh
       - name: "⚙️ Check: unit fixtures"
         run: sh ./tests/installers.sh
-      - name: "⚙️  Check: install.sh -- -i skip"
-        run: sh -x ./public/sh/install.sh -- -i skip; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-      - name: "⚙️  Check: install.sh -- -a annex"
-        run: sh -x ./public/sh/install.sh -- -a annex; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-      - name: "⚙️  Check: install.sh -- -a loader"
-        run: sh -x ./public/sh/install.sh -- -a loader; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
-      - name: "⚙️  Check: install.sh -- -a zunit"
-        run: sh -x ./public/sh/install.sh -- -a zunit; command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi
+      - name: "⚙️ Check: install.sh -i skip"
+        run: |
+          set -eu
+          # Start from a clean home; later steps clean up after themselves.
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -i skip
+          test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
+          if grep -qs "zi.zsh" ~/.zshrc; then echo "-i skip modified .zshrc"; exit 1; fi
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+      - name: "⚙️ Check: install.sh -a annex"
+        run: |
+          set -eu
+          sh -x ./public/sh/install.sh -a annex
+          test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
+          grep -q "z-shell/z-a-meta-plugins" ~/.zshrc
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+      - name: "⚙️ Check: install.sh -a loader"
+        run: |
+          set -eu
+          sh -x ./public/sh/install.sh -a loader
+          test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
+          test -f "${XDG_CONFIG_HOME:-$HOME/.config}/zi/init.zsh"
+          grep -q "zzinit" ~/.zshrc
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+      - name: "⚙️ Check: install.sh -a zunit"
+        run: |
+          set -eu
+          sh -x ./public/sh/install.sh -a zunit
+          test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
+          grep -q "@zunit" ~/.zshrc
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
       - name: "⚙️ Check: install_zpmod.sh"
         run: sh -x ./public/sh/install_zpmod.sh
       - name: ⚙️ Load zpmod module
