@@ -794,8 +794,11 @@ test_annex_rerun_is_idempotent() {
   contains "${zsh_log}" 'zsh -f -c '
   contains "${zsh_log}" "${data}/zi/bin/zi.zsh"
   contains "${zsh_log}" 'temp-zsh-config'
-  # zicompinit reaches .zshrc, and only .zshrc.
-  contains "${home}/.zshrc" 'zicompinit'
+  # The annex-specific zicompinit reaches .zshrc (directly after the gallery
+  # comment), not only the one the default block writes.
+  if ! grep -A1 -F '# examples here -> https://wiki.zshell.dev/community/gallery/collection' "${home}/.zshrc" | grep -q '^zicompinit'; then
+    fail "annex profile did not write zicompinit after its gallery comment"
+  fi
   pass "annex profile is idempotent across reruns and never starts an interactive shell"
 }
 
