@@ -2,10 +2,10 @@
 description: Install or update the Zi plugin manager on a user's machine on their behalf, non-interactively, through the official installer and its flags, then verify the result. Never write .zshrc or the Zi configuration home directly.
 metadata:
   github-path: .github/skills/zi-install
-  github-pinned: 0105b04ac91b1c4a124b0b2b13d1288fdea72332
-  github-ref: 0105b04ac91b1c4a124b0b2b13d1288fdea72332
+  github-pinned: de88a85250897123602f3586ca7861cac782bc4b
+  github-ref: de88a85250897123602f3586ca7861cac782bc4b
   github-repo: https://github.com/z-shell/.github
-  github-tree-sha: 3f0be3510d6d6f46dc53692c72be32e0a1bf1c86
+  github-tree-sha: 8e3d74010168e06427797a70b80f5f94a74b3eeb
 name: zi-install
 ---
 
@@ -78,13 +78,15 @@ Start a fresh interactive shell, the way the user will, and ask Zi for its help 
 zsh -ic 'zi -h' >/dev/null && echo 'zi ok'
 ```
 
-This runs the user's own `.zshrc`, which is the point: it proves the integration works on normal startup. It cannot tell which integration answered, so for Loader the `Loader added` line above is the evidence that the loader block exists; the check below then confirms the loader ran and removed its helpers:
+This runs the user's own `.zshrc`, which is the point: it proves the integration works on normal startup. It cannot tell which integration answered, so for Loader the `Loader added` line above is the evidence that the loader block exists, and the probe below is the evidence that the installed loader itself works: it sources the resolved `init.zsh` in a clean shell, requires `zzinit` to be defined by that source, runs it, and requires it to remove itself afterwards. An absent `zzinit` is success only after this probe defined and ran it.
 
 ```sh
-zsh -ic 'print "zzinit:${+functions[zzinit]}"'
+zsh -f -c 'unfunction zzinit _zi_err _zi_fetch _zi_check_stream _zi_setup _zi_source _zi_comps _zi_pmod 2>/dev/null; typeset -gA ZI; if [[ -n ${XDG_CONFIG_HOME:-} && $XDG_CONFIG_HOME == /* ]]; then d="$XDG_CONFIG_HOME/zi"; else d="$HOME/.config/zi"; fi; source "$d/init.zsh" || { print "loader missing"; exit 1 }; (( ${+functions[zzinit]} )) || { print "loader defined no zzinit"; exit 1 }; zzinit || { print "zzinit failed"; exit 1 }; for f in zzinit _zi_err _zi_fetch _zi_check_stream _zi_setup _zi_source _zi_comps _zi_pmod; do (( ${+functions[$f]} )) && { print "helper not removed: $f"; exit 1 }; done; print "loader ok"'
 ```
 
-Expect `zzinit:0`. `zzinit:1` means the load failed and the helper stayed for a retry; show the user the output of `zsh -ic zzinit`. For `-i skip`, verify only that `zi.zsh` exists beneath the directory the installer printed in its `Successfully installed at <dir>` or `Updating (z-shell/zi) plugin manager at <dir>` line, which honours `~/.zi`, an explicit `ZI_HOME`, and `ZI_BIN_DIR_NAME`; do not assume the XDG default, and leave `.zshrc` untouched.
+The probe first removes any loader-owned function that a system `zshenv` might have defined, so every definition it then checks must come from the sourced file; it resolves the configuration home with the installer's rule (an absolute `XDG_CONFIG_HOME`, otherwise `$HOME/.config`) and checks every loader-owned helper, not only `zzinit`. Expect `loader ok`; report any other line verbatim, and for `zzinit failed` show the user the loader's own diagnostic from the same command.
+
+For `-i skip`, verify only that `zi.zsh` exists beneath the directory the installer printed in its `Successfully installed at <dir>` or `Updating (z-shell/zi) plugin manager at <dir>` line, which honours `~/.zi`, an explicit `ZI_HOME`, and `ZI_BIN_DIR_NAME`; do not assume the XDG default, and leave `.zshrc` untouched.
 
 ## Report
 
