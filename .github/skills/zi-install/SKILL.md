@@ -2,10 +2,10 @@
 description: Install or update the Zi plugin manager on a user's machine on their behalf, non-interactively, through the official installer and its flags, then verify the result. Never write .zshrc or the Zi configuration home directly.
 metadata:
   github-path: .github/skills/zi-install
-  github-pinned: de88a85250897123602f3586ca7861cac782bc4b
-  github-ref: de88a85250897123602f3586ca7861cac782bc4b
+  github-pinned: bc2dae03d43216cca93f1f585cb06266c8262ca1
+  github-ref: bc2dae03d43216cca93f1f585cb06266c8262ca1
   github-repo: https://github.com/z-shell/.github
-  github-tree-sha: 8e3d74010168e06427797a70b80f5f94a74b3eeb
+  github-tree-sha: 5b96a97ea139fbc7c3b3c5679d297738f6e8abc9
 name: zi-install
 ---
 
@@ -29,6 +29,7 @@ Prefer Loader for a new setup. Use `-i skip` when the user manages their dotfile
 - `.zshrc` lives in `${ZDOTDIR:-$HOME}`; report that path before running. `ZDOTDIR` and `ZI_HOME`, when set, must be absolute: the installer changes directory before it reads them, so a relative value targets the wrong place. Stop and ask the user if either is relative.
 - The installer honours `XDG_CONFIG_HOME` and `XDG_DATA_HOME` only when they are absolute; a relative value falls back to `~/.config` and `~/.local/share`. Say which directories will be used.
 - An existing installation is detected by the installer (`~/.zi` or `$XDG_DATA_HOME/zi`, or an explicit `ZI_HOME`). Do not move or delete it.
+- An explicit `ZI_HOME` or `ZI_BIN_DIR_NAME` is supported only with `-i skip`. The Loader block does not carry them, so with `-a loader` the first shell start would clone a second Zi at the default location (z-shell/src#217). If the user has either set and wants Loader, stop and explain that.
 - `zsh`, `git`, and `curl` or `wget` must be present; the installer refuses without `git`.
 
 ## Run the installer
