@@ -49,6 +49,11 @@ reviewable plan, and applies the checkout and configuration as separate phases.
 The `loader`, `annex`, and `zunit` profiles all use that planner. The `-i skip`
 profile installs Zi without changing `.zshrc`.
 
+The source-adjacent [Zi Setup TUI contract](zi-setup-tui-contract.md) defines
+the machine interface and acceptance boundary for a future guided terminal
+client. The client offers `loader` and `annex`; `zunit` remains
+compatibility-only for existing installer output.
+
 ## Repository layout
 
 | Path                  | Purpose                                                                  |

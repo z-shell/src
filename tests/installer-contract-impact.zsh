@@ -57,6 +57,8 @@ run_detector() {
 }
 
 typeset repository output
+integer contract_version
+contract_version="$(jq -r '.contract_version' "$project_root/contracts/installer-contract-v1.json")"
 
 # 1. Bootstrap: base has no manifest or contract
 repository="${temp_root}/bootstrap"
@@ -79,11 +81,11 @@ command cp "$project_root/public/index.html" "$repository/public/"
 command cp "$project_root/docs/README.md" "$repository/docs/"
 command cp "$project_root/.github/skills/zi-install/SKILL.md" "$repository/.github/skills/zi-install/"
 command git -C "$repository" add .
-command git -C "$repository" commit -qm "feat: introduce installer contract v1"
+command git -C "$repository" commit -qm "feat: introduce installer contract"
 
 output="$(run_detector "$repository" --no-policy)"
 assert_contains "$output" "Installer contract bootstrap"
-assert_contains "$output" "Introducing contract version v1"
+assert_contains "$output" "Introducing contract version v${contract_version}"
 print "ok 1 - bootstrap mode safely succeeds when base has no trusted detector"
 
 # 2. No impact: changes to unrelated files
@@ -111,7 +113,7 @@ print "ok 3 - source changes without contract-version bump fail policy"
 repository="$(new_case_repository bump-without-ack)"
 print "# modification" >> "$repository/public/sh/setup.sh"
 typeset changed_manifest="${repository}/contracts/installer-contract-v1.json.new"
-jq '.contract_version = 2' "$repository/contracts/installer-contract-v1.json" > "$changed_manifest"
+jq '.contract_version += 1' "$repository/contracts/installer-contract-v1.json" > "$changed_manifest"
 command mv "$changed_manifest" "$repository/contracts/installer-contract-v1.json"
 command git -C "$repository" add .
 command git -C "$repository" commit -qm "feat!: modify setup.sh with version bump"

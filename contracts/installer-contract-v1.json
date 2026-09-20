@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": 1,
+  "contract_version": 2,
   "evidence_reviewed": "2026-09-20",
   "renames": [],
   "surfaces": [
@@ -45,7 +45,7 @@
       "path": "docs/getting_started/01_installation.mdx",
       "scope": "external",
       "evidence_status": "published",
-      "evidence": "https://github.com/z-shell/wiki/blob/2270e295dfa7a87f773009c374f76de61aa54e24/docs/getting_started/01_installation.mdx",
+      "evidence": "https://github.com/z-shell/wiki/blob/293d23e6238b50bda15ac85b7f8fa9bdbc95be66/docs/getting_started/01_installation.mdx",
       "surfaces": [
         "cli-profile-behavior",
         "output-status-messages",
@@ -59,7 +59,7 @@
       "path": ".github/skills/zi-install/SKILL.md",
       "scope": "external",
       "evidence_status": "published",
-      "evidence": "https://github.com/z-shell/.github/blob/c26699d42c1bb9152fc2a4f92d1872fec2430166/.github/skills/zi-install/SKILL.md",
+      "evidence": "https://github.com/z-shell/.github/blob/ce74af22db3af827eed9558596275cdf3fb07505/.github/skills/zi-install/SKILL.md",
       "surfaces": [
         "cli-profile-behavior",
         "output-status-messages",
@@ -111,8 +111,8 @@
       "repository": "z-shell/zi",
       "path": "README.md",
       "scope": "external",
-      "evidence_status": "pending",
-      "evidence": "https://github.com/z-shell/zi/blob/3e331cf715474b9066f1ff835b01e67035a38c15/README.md",
+      "evidence_status": "published",
+      "evidence": "https://github.com/z-shell/zi/blob/67fbb057fe05bc5664c0e558185a18b34a81defb/README.md",
       "surfaces": ["cli-profile-behavior", "companion-asset-checksum"]
     }
   ]

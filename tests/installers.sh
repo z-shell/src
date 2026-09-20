@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 # -*- mode: sh; sh-indentation: 2; indent-tabs-mode: nil; sh-basic-offset: 2; -*-
 # vim: ft=sh sw=2 ts=2 et
+# Fixture assertions intentionally combine captured output with surrounding
+# predicates so each failed read fails the same test expression.
+# shellcheck disable=SC2310,SC2312
 
 set -eu
 
@@ -435,6 +438,10 @@ case "${cmd}" in
       dest="${arg}"
     done
     [ -n "${dest}" ] || { printf '%s\n' "installers.sh git test double: missing clone destination" >&2; exit 64; }
+    if [ "${ZI_SRC_TEST_FAKE_CLONE_FAIL:-0}" -ne 0 ]; then
+      printf '%s\n' "fatal: simulated clone failure" >&2
+      exit 128
+    fi
     mkdir -p "${dest}/.git" "${dest}/lib"
     printf '%s\n' '# fake zi.zsh' > "${dest}/zi.zsh"
     printf '%s\n' '# fake _zi completion' > "${dest}/lib/_zi"
@@ -999,7 +1006,188 @@ test_zshrc_uses_short_entrypoint() {
     sh "${ROOT}/public/sh/install.sh" >/dev/null
 
   contains "${home2}/.config/zi/setup/pre.zsh" "ZI[HOME_DIR]='${sibling}'"
+  # shellcheck disable=SC2016
   pass 'a sibling of $HOME remains an exact serialized path'
+}
+
+test_setup_describe_contract() {
+  describe_home="${TMP_ROOT}/describe-home"
+  describe_config="${TMP_ROOT}/describe-config"
+  describe_data="${TMP_ROOT}/describe-data"
+  describe_output="${TMP_ROOT}/describe-output"
+  command mkdir -p "${describe_home}"
+  printf '%s\n' '# existing startup content' >"${describe_home}/.zshrc"
+  describe_before="$(sha256_file "${describe_home}/.zshrc")"
+
+  HOME="${describe_home}" \
+    ZDOTDIR="${describe_home}" \
+    XDG_CONFIG_HOME="${describe_config}" \
+    XDG_DATA_HOME="${describe_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" describe --output "${describe_output}" >/dev/null
+
+  [ "$(cat "${describe_output}/format")" = zi-setup-describe-v1 ] || fail 'describe format is not versioned'
+  [ "$(cat "${describe_output}/facts/zshrc-state/value")" = file ] || fail 'describe did not observe .zshrc'
+  [ "$(cat "${describe_output}/facts/git/value")" = available ] || fail 'describe did not observe git'
+  [ "$(cat "${describe_output}/facts/zsh/value")" = available ] || fail 'describe did not observe zsh'
+  [ "$(cat "${describe_output}/profiles/loader/selectable")" = yes ] || fail 'loader is not selectable in a fresh home'
+  [ "$(cat "${describe_output}/profiles/annex/selectable")" = yes ] || fail 'annex is not selectable in a fresh home'
+  [ "$(sed -n '1p' "${describe_output}/profiles/order")" = loader ] || fail 'loader is not the first described profile'
+  [ "$(sed -n '2p' "${describe_output}/profiles/order")" = annex ] || fail 'annex is not the second described profile'
+  [ "$(wc -l <"${describe_output}/profiles/order" | tr -d ' ')" -eq 2 ] || fail 'fresh describe exposed an extra profile'
+  [ "$(sha256_file "${describe_home}/.zshrc")" = "${describe_before}" ] || fail 'describe changed .zshrc'
+
+  dangling_output="${TMP_ROOT}/describe-dangling-output"
+  command ln -s "${TMP_ROOT}/describe-missing-target" "${dangling_output}"
+  set +e
+  HOME="${describe_home}" PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" describe --output "${dangling_output}" >/dev/null 2>&1
+  dangling_status="$?"
+  set -e
+  [ "${dangling_status}" -eq 2 ] || fail "dangling output path exited ${dangling_status}, expected 2"
+  [ -L "${dangling_output}" ] || fail 'describe replaced a dangling output symlink'
+
+  zunit_home="${TMP_ROOT}/describe-zunit-home"
+  zunit_output="${TMP_ROOT}/describe-zunit-output"
+  command mkdir -p "${zunit_home}"
+  command cat >"${zunit_home}/.zshrc" <<'EOF'
+zi light-mode for \
+  z-shell/z-a-meta-plugins \
+  @annexes @zunit
+EOF
+  HOME="${zunit_home}" \
+    ZDOTDIR="${zunit_home}" \
+    XDG_CONFIG_HOME="${TMP_ROOT}/describe-zunit-config" \
+    XDG_DATA_HOME="${TMP_ROOT}/describe-zunit-data" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" describe --output "${zunit_output}" >/dev/null
+  contains "${zunit_output}/profiles/order" zunit
+  [ "$(cat "${zunit_output}/profiles/zunit/selectable")" = no ] || fail 'legacy zunit became selectable'
+
+  ambiguous_home="${TMP_ROOT}/describe-ambiguous-home"
+  ambiguous_data="${TMP_ROOT}/describe-ambiguous-data"
+  ambiguous_output="${TMP_ROOT}/describe-ambiguous-output"
+  command mkdir -p "${ambiguous_home}/.zi/plugins" "${ambiguous_data}/zi/plugins"
+  set +e
+  HOME="${ambiguous_home}" \
+    XDG_CONFIG_HOME="${TMP_ROOT}/describe-ambiguous-config" \
+    XDG_DATA_HOME="${ambiguous_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" describe --output "${ambiguous_output}" >/dev/null
+  describe_status="$?"
+  set -e
+  [ "${describe_status}" -eq 3 ] || fail "ambiguous discovery exited ${describe_status}, expected 3"
+  [ "$(cat "${ambiguous_output}/facts/zi-home-state/value")" = ambiguous ] || fail 'ambiguous Zi homes were not represented'
+  [ "$(cat "${ambiguous_output}/profiles/loader/selectable")" = no ] || fail 'ambiguous Zi homes produced an actionable profile'
+  pass 'setup describe publishes bounded discovery and compatibility facts'
+}
+
+test_setup_plan_interface_metadata() {
+  metadata_home="${TMP_ROOT}/metadata-home"
+  metadata_config="${TMP_ROOT}/metadata-config"
+  metadata_data="${TMP_ROOT}/metadata-data"
+  metadata_plan_one="${TMP_ROOT}/metadata-plan-one"
+  metadata_plan_two="${TMP_ROOT}/metadata-plan-two"
+  metadata_result="${TMP_ROOT}/metadata-result"
+  command mkdir -p "${metadata_home}"
+
+  for metadata_plan in "${metadata_plan_one}" "${metadata_plan_two}"; do
+    HOME="${metadata_home}" \
+      XDG_CONFIG_HOME="${metadata_config}" \
+      XDG_DATA_HOME="${metadata_data}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh "${ROOT}/public/sh/setup.sh" plan --plan "${metadata_plan}" --profile annex --skip-zshrc >/dev/null
+  done
+
+  [ "$(cat "${metadata_plan_one}/operations/order")" = "$(printf 'checkout-sync\nwrite-files')" ] || fail 'plan operation order is incomplete'
+  [ "$(cat "${metadata_plan_one}/operations/checkout-sync/phase")" = checkout ] || fail 'checkout operation phase is invalid'
+  [ "$(cat "${metadata_plan_one}/operations/write-files/phase")" = files ] || fail 'file operation phase is invalid'
+  [ "$(cat "${metadata_plan_one}/warnings/deferred-first-start/severity")" = info ] || fail 'annex warning severity is invalid'
+  [ "$(cat "${metadata_plan_one}/warnings/zshrc-skipped/severity")" = warning ] || fail 'skip warning severity is invalid'
+  [ "$(cat "${metadata_plan_one}/plan.id")" = "$(cat "${metadata_plan_two}/plan.id")" ] || fail 'identical filesystem inputs produced different plan identities'
+
+  printf '%s\n' 'tampered summary' >"${metadata_plan_one}/operations/write-files/summary"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${metadata_plan_one}" --phase files --result "${metadata_result}" >/dev/null 2>&1
+  metadata_status="$?"
+  set -e
+  [ "${metadata_status}" -eq 4 ] || fail "tampered operation metadata exited ${metadata_status}, expected 4"
+  [ "$(cat "${metadata_result}/error/code")" = plan-changed ] || fail 'tampered operation metadata did not report plan-changed'
+  [ ! -e "${metadata_result}/error/operation" ] || fail 'global plan failure named an operation'
+  pass 'plan metadata is deterministic and covered by the reviewed hash'
+}
+
+test_setup_apply_result_contract() {
+  result_home="${TMP_ROOT}/result-home"
+  result_config="${TMP_ROOT}/result-config"
+  result_data="${TMP_ROOT}/result-data"
+  result_plan="${TMP_ROOT}/result-plan"
+  result_output="${TMP_ROOT}/result-output"
+  command mkdir -p "${result_home}"
+  HOME="${result_home}" \
+    XDG_CONFIG_HOME="${result_config}" \
+    XDG_DATA_HOME="${result_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${result_plan}" --skip-zshrc >/dev/null
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${result_plan}" --phase files \
+    --expect "$(cat "${result_plan}/plan.id")" --result "${result_output}" >/dev/null
+  [ "$(cat "${result_output}/format")" = zi-setup-result-v1 ] || fail 'apply result format is not versioned'
+  [ "$(cat "${result_output}/status")" = succeeded ] || fail 'successful files result is not succeeded'
+  [ "$(cat "${result_output}/operations/write-files/status")" = succeeded ] || fail 'files operation is not succeeded'
+  [ "$(cat "${result_output}/receipt/path")" = "${result_config}/zi/setup/receipt" ] || fail 'files result omitted the receipt path'
+
+  drift_home="${TMP_ROOT}/result-drift-home"
+  drift_config="${TMP_ROOT}/result-drift-config"
+  drift_data="${TMP_ROOT}/result-drift-data"
+  drift_plan="${TMP_ROOT}/result-drift-plan"
+  drift_output="${TMP_ROOT}/result-drift-output"
+  command mkdir -p "${drift_home}" "${drift_config}/zi"
+  HOME="${drift_home}" XDG_CONFIG_HOME="${drift_config}" XDG_DATA_HOME="${drift_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${drift_plan}" --skip-zshrc >/dev/null
+  printf '%s\n' drift >"${drift_config}/zi/init.zsh"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${drift_plan}" --phase files --result "${drift_output}" >/dev/null 2>&1
+  drift_result_status="$?"
+  set -e
+  [ "${drift_result_status}" -eq 4 ] || fail "target drift exited ${drift_result_status}, expected 4"
+  [ "$(cat "${drift_output}/error/code")" = target-drift ] || fail 'target drift result has the wrong code'
+  [ "$(cat "${drift_output}/error/operation")" = write-files ] || fail 'target drift result omitted its operation'
+
+  lock_home="${TMP_ROOT}/result-lock-home"
+  lock_config="${TMP_ROOT}/result-lock-config"
+  lock_data="${TMP_ROOT}/result-lock-data"
+  lock_plan="${TMP_ROOT}/result-lock-plan"
+  lock_output="${TMP_ROOT}/result-lock-output"
+  command mkdir -p "${lock_home}"
+  HOME="${lock_home}" XDG_CONFIG_HOME="${lock_config}" XDG_DATA_HOME="${lock_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${lock_plan}" --skip-zshrc >/dev/null
+  command mkdir -p "${lock_config}/zi.zi-setup.lock"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${lock_plan}" --phase files --result "${lock_output}" >/dev/null 2>&1
+  lock_result_status="$?"
+  set -e
+  [ "${lock_result_status}" -eq 4 ] || fail "held lock exited ${lock_result_status}, expected 4"
+  [ "$(cat "${lock_output}/error/code")" = lock-held ] || fail 'held lock result has the wrong code'
+  [ ! -e "${lock_output}/error/operation" ] || fail 'held lock named an operation that did not begin'
+
+  network_home="${TMP_ROOT}/result-network-home"
+  network_config="${TMP_ROOT}/result-network-config"
+  network_data="${TMP_ROOT}/result-network-data"
+  network_plan="${TMP_ROOT}/result-network-plan"
+  network_output="${TMP_ROOT}/result-network-output"
+  command mkdir -p "${network_home}"
+  HOME="${network_home}" XDG_CONFIG_HOME="${network_config}" XDG_DATA_HOME="${network_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${network_plan}" --skip-zshrc >/dev/null
+  set +e
+  ZI_SRC_TEST_FAKE_CLONE_FAIL=1 PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${network_plan}" --phase checkout --result "${network_output}" >/dev/null 2>&1
+  network_result_status="$?"
+  set -e
+  [ "${network_result_status}" -eq 5 ] || fail "network failure exited ${network_result_status}, expected 5"
+  [ "$(cat "${network_output}/error/code")" = network-failed ] || fail 'network failure result has the wrong code'
+  [ "$(cat "${network_output}/error/operation")" = checkout-sync ] || fail 'network failure result omitted its operation'
+  pass 'apply publishes stable success and failure result artifacts'
 }
 
 test_setup_plan_tamper_is_rejected() {
@@ -1271,6 +1459,7 @@ EOF
   contains "${loader_migration_plan}/plan.meta" "checkout_path=${loader_migration_home}/.zi/bin"
   sh "${ROOT}/public/sh/setup.sh" apply --plan "${loader_migration_plan}" --phase files >/dev/null
   contains "${loader_migration_home}/.zshrc" '# >>> zi setup >>>'
+  # shellcheck disable=SC2016
   if grep -F 'if [[ -r "${ZI_LOADER_CONFIG_HOME}/init.zsh" ]]' "${loader_migration_home}/.zshrc" >/dev/null 2>&1; then
     fail "legacy loader block remained after migration"
   fi
@@ -1541,6 +1730,9 @@ test_skip_leaves_annex_out
 test_branch_option_rejects_refspec
 test_source_ref_rejects_refspec
 test_zshrc_uses_short_entrypoint
+test_setup_describe_contract
+test_setup_plan_interface_metadata
+test_setup_apply_result_contract
 test_setup_plan_tamper_is_rejected
 test_setup_target_drift_is_transactional
 test_setup_symlinked_zshrc_is_refused
