@@ -59,7 +59,7 @@
       "path": ".github/skills/zi-install/SKILL.md",
       "scope": "external",
       "evidence_status": "published",
-      "evidence": "https://github.com/z-shell/.github/blob/664d69c0f99929d7f60be0546d6f766745fc9611/.github/skills/zi-install/SKILL.md",
+      "evidence": "https://github.com/z-shell/.github/blob/ce74af22db3af827eed9558596275cdf3fb07505/.github/skills/zi-install/SKILL.md",
       "surfaces": [
         "cli-profile-behavior",
         "output-status-messages",

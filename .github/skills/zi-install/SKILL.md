@@ -2,10 +2,10 @@
 description: Install or update the Zi plugin manager on a user's machine on their behalf, non-interactively, through the official installer and its flags, then verify the result. Never write .zshrc or the Zi configuration home directly.
 metadata:
   github-path: .github/skills/zi-install
-  github-pinned: c26699d42c1bb9152fc2a4f92d1872fec2430166
-  github-ref: c26699d42c1bb9152fc2a4f92d1872fec2430166
+  github-pinned: ce74af22db3af827eed9558596275cdf3fb07505
+  github-ref: ce74af22db3af827eed9558596275cdf3fb07505
   github-repo: https://github.com/z-shell/.github
-  github-tree-sha: 698e0845b8cfdd546f24d96cef706febaf3caec4
+  github-tree-sha: c0115d60db843d3e53af79fb6a56106736231bc0
 name: zi-install
 ---
 
@@ -15,30 +15,17 @@ Drive the official installer; never reproduce what it does. Do not write `.zshrc
 
 Canonical long-form user guidance lives in the [Z-Shell Wiki: Installation](https://wiki.zshell.dev/docs/getting_started/installation).
 
-Machine clients use the versioned `setup.sh describe`, `plan`, and `apply`
-artifacts documented in the source repository. Consume those artifact fields
-and exit statuses directly; do not parse human-readable installer output to
-make decisions. The direct agent-driven flow below continues to use
-`install.sh` as its entrypoint.
-
 ## Choose the profile
 
-The installer entrypoint defaults to the `loader` profile. Recognized profiles:
+The installer entrypoint defaults to the `loader` profile. Profiles offered for a new installation:
 
 | Profile      | Command suffix | Effect on `.zshrc`                                             |
 | ------------ | -------------- | -------------------------------------------------------------- |
 | Loader       | `-a loader`    | Adds the short managed block sourcing `setup.zsh` (default)    |
 | Annex        | `-a annex`     | Adds the short managed block with recommended annexes deferred |
-| ZUnit (legacy) | `-a zunit`   | Preserves an existing ZUnit setup during migration             |
 | Install only | `-i skip`      | No `.zshrc` change; the user integrates Zi themselves          |
 
-Offer Loader or Annex for a new setup. Keep ZUnit only when updating an
-installation that already uses it; do not recommend it as a new profile. Use
-`-i skip` when the user manages their dotfiles elsewhere; then hand them the
-block from the [installation page](https://wiki.zshell.dev/docs/getting_started/installation)
-instead of editing anything. `-b <ref>` selects a Zi branch or tag (defaults to
-`main`). Note that the direct profile (`-a direct`) is deprecated and mapped to
-`loader`.
+Prefer Loader for a new setup. Never offer the `zunit` profile (`-a zunit`) for a new setup; it is compatibility-only and retained strictly so existing installations can be migrated without data loss. Use `-i skip` when the user manages their dotfiles elsewhere; then hand them the block from the [installation page](https://wiki.zshell.dev/docs/getting_started/installation) instead of editing anything. `-b <ref>` selects a Zi branch or tag (defaults to `main`). Note that the direct profile (`-a direct`) is deprecated and mapped to `loader`.
 
 ## Resolve the environment first
 
@@ -81,7 +68,7 @@ Report a failed fetch or a failed verification as a failed install; never procee
 Read the result, do not assume it:
 
 - exit 0 and `Successfully installed at <dir>`: proceed to verification. The closing `Successfully installed Zi.` banner confirms completion;
-- `Zi installer: recipe installation is deferred to the first shell start.`: expected output when installing with `-a annex` or `-a zunit`; recipes install on first shell launch;
+- `Zi installer: recipe installation is deferred to the first shell start.`: expected output when installing with `-a annex` (or compatibility `-a zunit`); recipes install on first shell launch;
 - `Zi installer: the direct zi.zsh profile is deprecated; using the guided loader profile.`: informative notice if `-a direct` was passed;
 - `managed .zshrc block changed outside Zi setup; apply the printed patch manually or restore the receipt state`: the managed block was modified; show the printed patch to the user and stop, do not overwrite;
 - `unrecognised Zi integration remains in .zshrc; refusing to initialise Zi twice`: an existing unmanaged Zi integration was detected; report it as a conflict and let the user decide; do not edit `.zshrc` to force it;
@@ -96,7 +83,7 @@ Rerunning the installer is the update path: it fetches and fast-forwards the exi
 
 ## The managed .zshrc block
 
-For integrated profiles (`loader`, `annex`, `zunit`), the installer writes or updates a short 3-line marker-delimited block in `${ZDOTDIR:-$HOME}/.zshrc`:
+For integrated profiles (`loader`, `annex`, or compatibility `zunit`), the installer writes or updates a short 3-line marker-delimited block in `${ZDOTDIR:-$HOME}/.zshrc`:
 
 ```zsh
 # >>> zi setup >>>
@@ -105,6 +92,24 @@ source '/absolute/path/to/config/zi/setup.zsh'
 ```
 
 User dotfiles stay readable and minimal. Implementation details, path checks, error handling, loader startup (`init.zsh && zzinit`), and post-load recipes (`setup/shell.zsh`) are encapsulated in the generated `setup.zsh` entrypoint.
+
+## Machine interface
+
+For a source revision that provides `zi-setup-describe-v1` and `zi-setup-result-v1` (introduced by [z-shell/src#224](https://github.com/z-shell/src/pull/224)), use the versioned machine interface rather than parsing human stdout or stderr. Routine installs and older source revisions continue to use the verified `install.sh` flow above; do not assume the machine artifacts exist.
+
+Drive the engine only from a local `src` tree or a same-revision companion bundle containing `setup.sh`, `init.zsh`, `profiles.tsv`, and `checksum.txt` after verifying the published checksums. For a fetched bundle, pass the explicit `--profiles` path to `describe`, and the explicit `--init`, `--profiles`, and `--checksum` paths to `plan`.
+
+- **Directory artifacts:** Commands communicate through private directory artifacts with fixed relative paths containing raw bytes or restricted tokens (avoiding shell-level JSON escaping). Each destination must not exist, and its immediate parent must already exist and be writable:
+  - `setup.sh describe --output DIR`: Publishes a `zi-setup-describe-v1` artifact containing `facts/` and `profiles/` (`loader` and `annex`; legacy `zunit` is marked `selectable=no` if detected). Exits 3 if all profiles are blocked.
+  - `setup.sh plan --plan DIR`: Publishes a deterministic `zi-setup-plan-v1` artifact containing `plan.id`, `plan.meta`, `checkout/`, `targets/`, `operations/`, and `warnings/`.
+  - `setup.sh apply --plan DIR --phase checkout|files [--expect SHA256] [--result DIR]`: Applies the plan phase-by-phase.
+- **Exact plan-id approval:** The plan hash covers all artifact files except `plan.id`. Clients must record the reviewed `plan.id` and pass it via `--expect` for both checkout and files phases. Changed artifact content produces `plan-changed`; changed live checkout or file preconditions produce `checkout-drift` or `target-drift`.
+- **Result artifacts:** Passing `--result DIR` to `apply` publishes a `zi-setup-result-v1` artifact containing `format`, `plan.id`, `phase`, `status` (`succeeded`, `failed`, `cancelled`), and `operations/`. Failures also contain `error/code` and `error/detail`, plus `error/operation` when attributable to one operation. A successful files phase contains `receipt/path`.
+- **Stable exit statuses and error codes:**
+  - Exit statuses: `0` (success), `2` (invocation or unsupported version), `3` (non-actionable discovery/plan), `4` (reviewed state or lock precondition changed, including plan, checkout, target drift, or lock contention), `5` (apply operation began but did not complete), `6` (cancelled).
+  - Error codes (`error/code`): stable ASCII identifiers including `unsupported-version`, `plan-changed`, `target-drift`, `checkout-drift`, `lock-held`, `network-failed`, `checkout-failed`, `write-failed`, and `cancelled`.
+- **Untrusted display text:** Operation summaries and warnings are display text. Clients must treat them as untrusted terminal content and strip or visibly escape control sequences. Decisions must rely solely on IDs and restricted tokens, never on display text.
+- **Do not parse human stdout/stderr:** Engine stdout and stderr are strictly for user presentation or diagnostics; their wording carries no compatibility promise. Never parse human stdout or stderr to make decisions; consume only documented directory artifacts and exit statuses.
 
 ## Verify
 
@@ -136,4 +141,4 @@ For `-i skip`, verify only that `zi.zsh` exists beneath the directory the instal
 
 ## Report
 
-State the profile used, the exact files created or changed, what was preserved, any installer messages or refusals verbatim, and the next step for the user: `exec zsh` after integrated installation (`loader`, `annex`, `zunit`); or for `-i skip`, first add the integration block from the [installation page](https://wiki.zshell.dev/docs/getting_started/installation) to their own `.zshrc`, then `exec zsh`.
+State the profile used, the exact files created or changed, what was preserved, any installer messages or refusals verbatim, and the next step for the user: `exec zsh` after integrated installation (`loader`, `annex`, or compatibility `zunit`); or for `-i skip`, first add the integration block from the [installation page](https://wiki.zshell.dev/docs/getting_started/installation) to their own `.zshrc`, then `exec zsh`.
