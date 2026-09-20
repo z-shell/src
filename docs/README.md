@@ -85,7 +85,7 @@ sh public/sh/generate-checksums.sh
 git diff --exit-code -- public/checksum.txt
 ```
 
-GitHub Actions exercises the installer and loader on Linux, macOS, and Cygwin.
+GitHub Actions exercises the installer and loader on Linux and macOS.
 Merges to `main` publish `public/` through GitHub Pages, and the loader-drift
 workflow verifies that the deployed loader matches its source and checksum.
 
