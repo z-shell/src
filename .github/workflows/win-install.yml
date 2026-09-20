@@ -4,12 +4,14 @@ name: Windows Install
 on:
   pull_request:
     paths:
+      - "public/setup/**"
       - "public/sh/**"
       - "public/zsh/**"
       - "tests/**"
       - ".github/workflows/win-install.yml"
   push:
     paths:
+      - "public/setup/**"
       - "public/sh/**"
       - "public/zsh/**"
       - "tests/**"
@@ -46,20 +48,28 @@ jobs:
       - name: 🪟 Dependencies (Windows)
         uses: egor-tensin/setup-cygwin@fca9069f92361187d4abfaa5d8a7490e435d8349 # v4.0.2
         with:
-          platform: x64
           packages: curl git zsh
       - name: 🪟 Run Install
         run: |
+          set -eu
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
           sh ./tests/installers.sh
-          sh -x ./public/sh/install.sh -- -i skip
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a annex
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a loader
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a zunit
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a zpmod
+          sh -x ./public/sh/install.sh -i skip
+          test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
+          test ! -e ~/.zshrc
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a annex
+          grep -Fq "z-shell/z-a-meta-plugins" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup/shell.zsh"
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a loader
+          grep -Fq "source '${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup.zsh'" ~/.zshrc
+          grep -Fq "zzinit" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup.zsh"
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a zunit
+          grep -Fq "@zunit" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup/shell.zsh"
+          # The Cygwin package is older than zpmod's required Zsh 5.8.1.
+          # Linux and macOS exercise the native module build.
         shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
       - name: 🪟 Smoke-test — verify zi.zsh present
         run: |

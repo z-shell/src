@@ -3,9 +3,11 @@ name: Checksum
 on:
   push:
     paths:
+      - "public/setup/**"
       - "public/sh/generate-checksums.sh"
       - "public/sh/install_zpmod.sh"
       - "public/sh/install.sh"
+      - "public/sh/setup.sh"
       - "public/sh/sync-init.sh"
       - "public/zsh/init.zsh"
       - ".github/workflows/checksum.yml"
