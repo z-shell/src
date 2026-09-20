@@ -2,8 +2,8 @@
 description: Install or update the Zi plugin manager on a user's machine on their behalf, non-interactively, through the official installer and its flags, then verify the result. Never write .zshrc or the Zi configuration home directly.
 metadata:
   github-path: .github/skills/zi-install
-  github-pinned: 664d69c0f99929d7f60be0546d6f766745fc9611
-  github-ref: 664d69c0f99929d7f60be0546d6f766745fc9611
+  github-pinned: c26699d42c1bb9152fc2a4f92d1872fec2430166
+  github-ref: c26699d42c1bb9152fc2a4f92d1872fec2430166
   github-repo: https://github.com/z-shell/.github
   github-tree-sha: 698e0845b8cfdd546f24d96cef706febaf3caec4
 name: zi-install

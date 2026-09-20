@@ -195,8 +195,17 @@ done
 print "ok 6 - strict manifest validation rejects malformed surfaces, consumers, and evidence"
 
 # 7. Pending external evidence semantics
-# 7a: canonical manifest has pending external evidence and verifies cleanly offline
-output="$(zsh "$project_root/scripts/installer-contract-evidence.zsh" --manifest "$project_root/contracts/installer-contract-v1.json")"
+# 7a: a manifest with pending external evidence verifies cleanly offline
+typeset pending_manifest="${temp_root}/pending-manifest.json"
+jq '
+  .consumers |= map(
+    if .scope == "external" then
+      .evidence_status = "pending"
+      | .evidence = null
+    else . end
+  )
+' "$project_root/contracts/installer-contract-v1.json" > "$pending_manifest"
+output="$(zsh "$project_root/scripts/installer-contract-evidence.zsh" --manifest "$pending_manifest")"
 assert_contains "$output" "pending   z-shell/wiki/docs/getting_started/01_installation.mdx (pending publication)"
 assert_contains "$output" "pending   z-shell/.github/.github/skills/zi-install/SKILL.md (pending publication)"
 assert_contains "$output" "pending   z-shell/zi/README.md (pending publication)"
@@ -217,7 +226,7 @@ typeset stale_manifest="${temp_root}/stale-manifest.json"
 jq '
   .consumers[0].evidence_status = "published"
   | .consumers[0].evidence = "https://github.com/z-shell/wiki/blob/1111111111111111111111111111111111111111/docs/getting_started/01_installation.mdx"
-' "$project_root/contracts/installer-contract-v1.json" > "$stale_manifest"
+' "$pending_manifest" > "$stale_manifest"
 
 if output="$(PATH="$mock_bin:$PATH" zsh "$project_root/scripts/installer-contract-evidence.zsh" --manifest "$stale_manifest" 2>&1)"; then
   fail "unresolvable evidence pin unexpectedly passed evidence verification"
