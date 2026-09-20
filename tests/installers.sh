@@ -908,6 +908,160 @@ test_sync_init() {
   pass "sync-init fixtures"
 }
 
+test_loader_default_paths_remain_dynamic() {
+  home="${TMP_ROOT}/loader-dynamic-home"
+  config="${TMP_ROOT}/loader-dynamic-config"
+  data="${TMP_ROOT}/loader-dynamic-data"
+  command mkdir -p "${home}" "${config}" "${data}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_CONFIG_HOME="${config}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null
+
+  if grep -F 'ZI[HOME_DIR]=' "${home}/.zshrc" >/dev/null 2>&1; then
+    fail "default loader install pinned a dynamically resolved home"
+  fi
+  pass "default loader paths remain dynamically resolved"
+}
+
+test_loader_carries_explicit_paths() {
+  home="${TMP_ROOT}/loader-explicit-home"
+  config="${TMP_ROOT}/loader-explicit-config"
+  data="${TMP_ROOT}/loader-explicit-data"
+  explicit="${TMP_ROOT}/loader explicit's root"
+  bin_name="custom \$(touch pwned) ' bin"
+  runtime_work="${TMP_ROOT}/loader-runtime-work"
+  values_log="${TMP_ROOT}/loader-explicit-values"
+  command mkdir -p "${home}" "${config}" "${data}" "${runtime_work}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_CONFIG_HOME="${config}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_HOME="${explicit}" \
+    ZI_BIN_DIR_NAME="${bin_name}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null
+
+  [ -f "${explicit}/${bin_name}/zi.zsh" ] || fail "loader install did not use the explicit checkout path"
+  contains "${home}/.zshrc" 'typeset -gA ZI'
+
+  (
+    cd "${runtime_work}" || exit 1
+    HOME="${home}" \
+      XDG_CONFIG_HOME="${config}" \
+      XDG_DATA_HOME="${data}" \
+      zsh -f -c '
+        source "$1"
+        print -r -- "home:${ZI[HOME_DIR]}"
+        print -r -- "bin:${ZI[BIN_DIR]}"
+        print -r -- "layout:${ZI[HOME_LAYOUT]}"
+      ' zsh "${home}/.zshrc"
+  ) >"${values_log}"
+
+  contains "${values_log}" "home:${explicit}"
+  contains "${values_log}" "bin:${explicit}/${bin_name}"
+  contains "${values_log}" 'layout:explicit'
+  [ ! -e "${runtime_work}/pwned" ] || fail "explicit loader path executed generated Zsh"
+  [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "loader startup cloned a second checkout"
+  pass "loader carries explicit home and bin paths into startup safely"
+}
+
+test_loader_carries_explicit_bin_name() {
+  home="${TMP_ROOT}/loader-bin-home"
+  config="${TMP_ROOT}/loader-bin-config"
+  data="${TMP_ROOT}/loader-bin-data"
+  bin_name="custom bin"
+  values_log="${TMP_ROOT}/loader-bin-values"
+  command mkdir -p "${home}" "${config}" "${data}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_CONFIG_HOME="${config}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_BIN_DIR_NAME="${bin_name}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null
+
+  HOME="${home}" \
+    XDG_CONFIG_HOME="${config}" \
+    XDG_DATA_HOME="${data}" \
+    zsh -f -c '
+      source "$1"
+      print -r -- "home:${ZI[HOME_DIR]}"
+      print -r -- "bin:${ZI[BIN_DIR]}"
+    ' zsh "${home}/.zshrc" >"${values_log}"
+
+  contains "${values_log}" "home:${data}/zi"
+  contains "${values_log}" "bin:${data}/zi/${bin_name}"
+  [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "custom bin startup cloned into the default bin"
+  pass "loader carries an explicit bin name with the resolved home"
+}
+
+test_relative_installer_paths_are_rejected() {
+  zdot_home="${TMP_ROOT}/relative-zdot-home"
+  zdot_config="${TMP_ROOT}/relative-zdot-config"
+  zdot_data="${TMP_ROOT}/relative-zdot-data"
+  zdot_work="${TMP_ROOT}/relative-zdot-work"
+  zdot_err="${TMP_ROOT}/relative-zdot-err"
+  command mkdir -p "${zdot_home}" "${zdot_work}"
+
+  set +e
+  (
+    cd "${zdot_work}" || exit 1
+    HOME="${zdot_home}" \
+      ZDOTDIR="relative-zdotdir" \
+      XDG_CONFIG_HOME="${zdot_config}" \
+      XDG_DATA_HOME="${zdot_data}" \
+      ZI_SRC_TEST_ROOT="${ROOT}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null 2>"${zdot_err}"
+  )
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh accepted a relative ZDOTDIR"
+  contains "${zdot_err}" 'ZDOTDIR must be an absolute path when set: relative-zdotdir'
+  [ ! -e "${zdot_config}" ] || fail "relative ZDOTDIR rejection wrote loader configuration"
+  [ ! -e "${zdot_data}" ] || fail "relative ZDOTDIR rejection created a checkout"
+  [ ! -e "${zdot_work}/relative-zdotdir" ] || fail "relative ZDOTDIR rejection created the relative path"
+
+  zi_home="${TMP_ROOT}/relative-zi-home"
+  zi_config="${TMP_ROOT}/relative-zi-config"
+  zi_data="${TMP_ROOT}/relative-zi-data"
+  zi_work="${TMP_ROOT}/relative-zi-work"
+  zi_err="${TMP_ROOT}/relative-zi-err"
+  command mkdir -p "${zi_home}" "${zi_work}"
+
+  set +e
+  (
+    cd "${zi_work}" || exit 1
+    HOME="${zi_home}" \
+      ZDOTDIR="${zi_home}" \
+      XDG_CONFIG_HOME="${zi_config}" \
+      XDG_DATA_HOME="${zi_data}" \
+      ZI_HOME="relative-zi-root" \
+      ZI_SRC_TEST_ROOT="${ROOT}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null 2>"${zi_err}"
+  )
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh accepted a relative ZI_HOME"
+  contains "${zi_err}" 'ZI_HOME must be an absolute path when set: relative-zi-root'
+  [ ! -e "${zi_config}" ] || fail "relative ZI_HOME rejection wrote loader configuration"
+  [ ! -e "${zi_data}" ] || fail "relative ZI_HOME rejection created a default checkout"
+  [ ! -e "${zi_work}/relative-zi-root" ] || fail "relative ZI_HOME rejection created the relative checkout"
+  pass "relative ZDOTDIR and ZI_HOME are rejected before persistent mutation"
+}
+
 check_syntax
 check_checksums
 test_init_defaults_are_single_arguments
@@ -920,6 +1074,10 @@ test_init_uses_private_tempdir
 test_init_path_resolution
 write_fake_tools
 test_loader_install
+test_loader_default_paths_remain_dynamic
+test_loader_carries_explicit_paths
+test_loader_carries_explicit_bin_name
+test_relative_installer_paths_are_rejected
 test_xdg_data_home_install
 test_legacy_home_install
 test_relative_xdg_fallback_install
