@@ -358,6 +358,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "${url}" ] || { printf '%s\n' "curl test double: missing URL" >&2; exit 64; }
+[ -z "${ZI_SRC_TEST_CURL_LOG:-}" ] || printf '%s\n' "${url}" >>"${ZI_SRC_TEST_CURL_LOG}"
 if [ -z "${out}" ] && [ "${remote_name}" -eq 1 ]; then
   out="${url##*/}"
 fi
@@ -565,6 +566,38 @@ test_curl_pipe_install() {
   contains "${home}/.zshrc" "source '${config}/zi/setup.zsh'"
   contains "${config}/zi/setup.zsh" "source '${config}/zi/init.zsh'"
   pass "curl-piped install.sh fetches companion assets and installs Zi"
+}
+
+test_curl_pipe_install_keeps_asset_ref() {
+  home="${TMP_ROOT}/curl-ref-home"
+  config="${TMP_ROOT}/curl-ref-config"
+  data="${TMP_ROOT}/curl-ref-data"
+  curl_log="${TMP_ROOT}/curl-ref-log"
+  src_ref="feature/208"
+  command mkdir -p "${home}"
+
+  ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    curl -fsSL "https://raw.githubusercontent.com/z-shell/src/${src_ref}/public/sh/install.sh" |
+    HOME="${home}" \
+      ZDOTDIR="${home}" \
+      XDG_CONFIG_HOME="${config}" \
+      XDG_DATA_HOME="${data}" \
+      ZI_SRC_REF="${src_ref}" \
+      ZI_SRC_TEST_CURL_LOG="${curl_log}" \
+      ZI_SRC_TEST_ROOT="${ROOT}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh >/dev/null
+
+  [ "$(wc -l <"${curl_log}" | tr -d ' ')" -eq 4 ] || fail "standalone installer fetched an unexpected number of companion assets"
+  if grep -F '/main/public/' "${curl_log}" >/dev/null 2>&1; then
+    fail "standalone installer mixed main assets with its requested source ref"
+  fi
+  contains "${curl_log}" "/${src_ref}/public/checksum.txt"
+  contains "${curl_log}" "/${src_ref}/public/zsh/init.zsh"
+  contains "${curl_log}" "/${src_ref}/public/sh/setup.sh"
+  contains "${curl_log}" "/${src_ref}/public/setup/profiles.tsv"
+  pass "curl-piped install.sh keeps companion assets on one source ref"
 }
 
 test_xdg_data_home_install() {
@@ -911,6 +944,29 @@ test_branch_option_rejects_refspec() {
   contains "${err}" 'invalid ref'
   [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "install proceeded after an invalid -b value"
   pass "-b rejects values that are not a branch name"
+}
+
+test_source_ref_rejects_refspec() {
+  home="${TMP_ROOT}/source-refspec-home"
+  data="${TMP_ROOT}/source-refspec-data"
+  err="${TMP_ROOT}/source-refspec-err"
+  command mkdir -p "${home}"
+
+  set +e
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_REF='main:refs/heads/other' \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >/dev/null 2>"${err}"
+  exit_code="$?"
+  set -e
+
+  [ "${exit_code}" -ne 0 ] || fail "install.sh accepted a refspec as ZI_SRC_REF"
+  contains "${err}" 'Invalid ZI_SRC_REF'
+  [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "install proceeded after an invalid ZI_SRC_REF"
+  pass "ZI_SRC_REF rejects values that are not a source ref"
 }
 
 test_zshrc_uses_short_entrypoint() {
@@ -1463,6 +1519,7 @@ test_init_path_resolution
 write_fake_tools
 test_loader_install
 test_curl_pipe_install
+test_curl_pipe_install_keeps_asset_ref
 test_loader_default_paths_remain_dynamic
 test_loader_carries_explicit_paths
 test_loader_carries_explicit_bin_name
@@ -1482,6 +1539,7 @@ test_zshrc_comment_does_not_suppress_integration
 test_annex_rerun_is_idempotent
 test_skip_leaves_annex_out
 test_branch_option_rejects_refspec
+test_source_ref_rejects_refspec
 test_zshrc_uses_short_entrypoint
 test_setup_plan_tamper_is_rejected
 test_setup_target_drift_is_transactional

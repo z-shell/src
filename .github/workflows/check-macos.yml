@@ -71,7 +71,8 @@ jobs:
           sh -x ./public/sh/install.sh -a loader
           test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
           test -f "${XDG_CONFIG_HOME:-$HOME/.config}/zi/init.zsh"
-          grep -q "zzinit" ~/.zshrc
+          grep -Fq "source '${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup.zsh'" ~/.zshrc
+          grep -Fq "zzinit" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup.zsh"
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
       - name: "⚙️ Check: install.sh -a zunit"
         run: |

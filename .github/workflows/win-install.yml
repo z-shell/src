@@ -52,16 +52,24 @@ jobs:
           packages: curl git zsh
       - name: 🪟 Run Install
         run: |
+          set -eu
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
           sh ./tests/installers.sh
-          sh -x ./public/sh/install.sh -- -i skip
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a annex
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a loader
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a zunit
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" /home/runneradmin/.zi
-          sh -x ./public/sh/install.sh -- -a zpmod
+          sh -x ./public/sh/install.sh -i skip
+          test -f "${XDG_DATA_HOME:-$HOME/.local/share}/zi/bin/zi.zsh"
+          test ! -e ~/.zshrc
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a annex
+          grep -Fq "z-shell/z-a-meta-plugins" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup/shell.zsh"
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a loader
+          grep -Fq "source '${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup.zsh'" ~/.zshrc
+          grep -Fq "zzinit" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup.zsh"
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a zunit
+          grep -Fq "@zunit" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup/shell.zsh"
+          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
+          sh -x ./public/sh/install.sh -a zpmod
         shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
       - name: 🪟 Smoke-test — verify zi.zsh present
         run: |

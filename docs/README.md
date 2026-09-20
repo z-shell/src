@@ -60,7 +60,17 @@
 For a normal installation, run:
 
 ```sh
-sh public/sh/install.sh
+sh -c "$(curl -fsSL https://get.zshell.dev)"
+```
+
+The downloaded `install.sh` remains the only entry point; it retrieves and
+verifies its planner assets automatically. To install an exact source revision,
+use the same tag, branch, or commit for the script and `ZI_SRC_REF`:
+
+```sh
+ref=v1.2.3
+curl -fsSL "https://raw.githubusercontent.com/z-shell/src/${ref}/public/sh/install.sh" |
+  ZI_SRC_REF="${ref}" sh
 ```
 
 To inspect and apply a plan manually:

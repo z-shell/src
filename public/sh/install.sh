@@ -58,6 +58,18 @@ case "${ZI_HOME-}" in "" | /*) ;; *)
   exit 1
   ;;
 esac
+ZI_SRC_REF="${ZI_SRC_REF:-main}"
+case "${ZI_SRC_REF}" in
+"" | -* | *..* | *[!A-Za-z0-9._/-]*)
+  printf '%s\n' "-- ERROR -- Invalid ZI_SRC_REF: ${ZI_SRC_REF}" >&2
+  exit 1
+  ;;
+esac
+command git check-ref-format --branch "${ZI_SRC_REF}" >/dev/null 2>&1 || {
+  printf '%s\n' "-- ERROR -- ZI_SRC_REF is not a valid Git ref: ${ZI_SRC_REF}" >&2
+  exit 1
+}
+ZI_SRC_ASSET_ROOT="https://raw.githubusercontent.com/z-shell/src/${ZI_SRC_REF}/public"
 
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-install.XXXXXX")" || exit 1
 trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
@@ -138,7 +150,7 @@ CHECKSUM_ASSET="${LOCAL_CHECKSUM}"
 if [ -z "${CHECKSUM_ASSET}" ]; then
   CHECKSUM_ASSET="${WORKDIR}/checksum.txt"
   fetch_to_file "${CHECKSUM_ASSET}" \
-    https://raw.githubusercontent.com/z-shell/src/main/public/checksum.txt || {
+    "${ZI_SRC_ASSET_ROOT}/checksum.txt" || {
     printf '%s\n' '-- ERROR -- failed to retrieve checksum manifest' >&2
     exit 1
   }
@@ -148,7 +160,7 @@ INIT_ASSET="${LOCAL_INIT}"
 if [ -z "${INIT_ASSET}" ]; then
   INIT_ASSET="${WORKDIR}/init.zsh"
   fetch_to_file "${INIT_ASSET}" \
-    https://raw.githubusercontent.com/z-shell/src/main/public/zsh/init.zsh || {
+    "${ZI_SRC_ASSET_ROOT}/zsh/init.zsh" || {
     printf '%s\n' '-- ERROR -- failed to retrieve init.zsh' >&2
     exit 1
   }
@@ -158,7 +170,7 @@ SETUP_ASSET="${LOCAL_SETUP}"
 if [ -z "${SETUP_ASSET}" ]; then
   SETUP_ASSET="${WORKDIR}/setup.sh"
   fetch_to_file "${SETUP_ASSET}" \
-    https://raw.githubusercontent.com/z-shell/src/main/public/sh/setup.sh || {
+    "${ZI_SRC_ASSET_ROOT}/sh/setup.sh" || {
     printf '%s\n' '-- ERROR -- failed to retrieve setup.sh' >&2
     exit 1
   }
@@ -168,7 +180,7 @@ PROFILES_ASSET="${LOCAL_PROFILES}"
 if [ -z "${PROFILES_ASSET}" ]; then
   PROFILES_ASSET="${WORKDIR}/profiles.tsv"
   fetch_to_file "${PROFILES_ASSET}" \
-    https://raw.githubusercontent.com/z-shell/src/main/public/setup/profiles.tsv || {
+    "${ZI_SRC_ASSET_ROOT}/setup/profiles.tsv" || {
     printf '%s\n' '-- ERROR -- failed to retrieve setup profile table' >&2
     exit 1
   }
@@ -206,7 +218,7 @@ if [ "${AOPT}" = zpmod ]; then
   if [ -z "${ZPMOD_ASSET}" ]; then
     ZPMOD_ASSET="${WORKDIR}/install_zpmod.sh"
     fetch_to_file "${ZPMOD_ASSET}" \
-      https://raw.githubusercontent.com/z-shell/src/main/public/sh/install_zpmod.sh || {
+      "${ZI_SRC_ASSET_ROOT}/sh/install_zpmod.sh" || {
       printf '%s\n' '-- ERROR -- failed to retrieve install_zpmod.sh' >&2
       exit 1
     }
