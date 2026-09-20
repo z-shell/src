@@ -15,7 +15,10 @@ set -eu
 ROOT="$(
   unset CDPATH
   cd "$(dirname "$0")/../.." 2>/dev/null && pwd
-)" || { printf '%s\n' "generate-checksums: cannot determine repository root" >&2; exit 1; }
+)" || {
+  printf '%s\n' "generate-checksums: cannot determine repository root" >&2
+  exit 1
+}
 
 CHECKSUM_FILE="${ROOT}/public/checksum.txt"
 
@@ -31,15 +34,16 @@ sha256_file() {
 }
 
 # Clear (or create) the checksum file before writing fresh entries with `: > file`.
-: > "${CHECKSUM_FILE}"
+: >"${CHECKSUM_FILE}"
 for f in \
   public/sh/install_zpmod.sh \
   public/sh/install.sh \
+  public/sh/setup.sh \
   public/sh/sync-init.sh \
-  public/zsh/init.zsh
-do
+  public/setup/profiles.tsv \
+  public/zsh/init.zsh; do
   hash="$(sha256_file "${ROOT}/${f}")"
-  printf '%s %s\n' "${hash}" "${f}" >> "${CHECKSUM_FILE}"
+  printf '%s %s\n' "${hash}" "${f}" >>"${CHECKSUM_FILE}"
 done
 
 printf '%s\n' "Checksums written to ${CHECKSUM_FILE}"

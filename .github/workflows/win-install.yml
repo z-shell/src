@@ -4,12 +4,14 @@ name: Windows Install
 on:
   pull_request:
     paths:
+      - "public/setup/**"
       - "public/sh/**"
       - "public/zsh/**"
       - "tests/**"
       - ".github/workflows/win-install.yml"
   push:
     paths:
+      - "public/setup/**"
       - "public/sh/**"
       - "public/zsh/**"
       - "tests/**"

@@ -4,64 +4,56 @@
 
 set -eu
 
-# Preserve whether the caller selected either checkout component. The loader
-# stays dynamically resolved unless an explicit value must survive startup.
-ZI_HOME_EXPLICIT=0
-[ -z "${ZI_HOME-}" ] || ZI_HOME_EXPLICIT=1
-ZI_BIN_DIR_NAME_EXPLICIT=0
-[ -z "${ZI_BIN_DIR_NAME-}" ] || ZI_BIN_DIR_NAME_EXPLICIT=1
 ZOPT=""
-AOPT=""
-BOPT="main"
+AOPT=loader
+BOPT=main
+BOPT_EXPLICIT=0
 while getopts ":i:a:b:" opt; do
   case ${opt} in
-  i)
-    ZOPT="${ZOPT}${OPTARG}"
-    ;;
-  a)
-    AOPT="${AOPT}${OPTARG}"
-    ;;
+  i) ZOPT="${OPTARG}" ;;
+  a) AOPT="${OPTARG}" ;;
   b)
     BOPT="${OPTARG}"
+    BOPT_EXPLICIT=1
     ;;
   \?)
-    echo "Invalid option: ${OPTARG}" 1>&2
+    printf '%s\n' "Invalid option: ${OPTARG}" >&2
     exit 1
     ;;
   :)
-    echo "Invalid option: ${OPTARG} requires an argument" 1>&2
+    printf '%s\n' "Invalid option: ${OPTARG} requires an argument" >&2
     exit 1
     ;;
   *)
-    echo "Invalid option: ${OPTARG}" 1>&2
+    printf '%s\n' "Invalid option: ${OPTARG}" >&2
     exit 1
     ;;
   esac
 done
 shift $((OPTIND - 1))
 
-# Validate BOPT to prevent sed delimiter injection when building init.zsh.
-# | is the sed delimiter used in the substitution; \ and & are special in
-# sed replacement expressions. The *[\\]* pattern matches a single backslash.
-case "${BOPT}" in
-# [\\] is a bracket expression for a literal backslash.
-*'|'* | *[\\]* | *'&'*)
-  printf '%s\n' "-- ERROR -- Invalid -b value: branch name must not contain '|', '\\', or '&'." >&2
+case "${ZOPT}" in "" | skip) ;; *)
+  printf '%s\n' "-- ERROR -- Unsupported -i profile: ${ZOPT}" >&2
   exit 1
   ;;
 esac
-
-case "${ZDOTDIR-}" in
-"" | /*) ;;
+case "${AOPT}" in
+loader | annex | zunit | zpmod) ;;
+direct)
+  printf '%s\n' 'Zi installer: the direct zi.zsh profile is deprecated; using the guided loader profile.' >&2
+  AOPT=loader
+  ;;
 *)
+  printf '%s\n' "-- ERROR -- Unsupported -a profile: ${AOPT}" >&2
+  exit 1
+  ;;
+esac
+case "${ZDOTDIR-}" in "" | /*) ;; *)
   printf '%s\n' "-- ERROR -- ZDOTDIR must be an absolute path when set: ${ZDOTDIR}" >&2
   exit 1
   ;;
 esac
-
-case "${ZI_HOME-}" in
-"" | /*) ;;
-*)
+case "${ZI_HOME-}" in "" | /*) ;; *)
   printf '%s\n' "-- ERROR -- ZI_HOME must be an absolute path when set: ${ZI_HOME}" >&2
   exit 1
   ;;
@@ -71,401 +63,174 @@ WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-install.XXXXXX")" || exit 1
 trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 
 SCRIPT_DIR=""
-LOCAL_INIT_ZSH=""
-LOCAL_INSTALL_ZPMOD=""
 case "$0" in
-*/?*)
-  SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
-  ;;
+*/?*) SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || SCRIPT_DIR="" ;;
 *) ;;
 esac
 
-if [ -n "${SCRIPT_DIR}" ]; then
-  if [ -f "${SCRIPT_DIR}/../zsh/init.zsh" ]; then
-    LOCAL_INIT_ZSH="${SCRIPT_DIR}/../zsh/init.zsh"
-  fi
-  if [ -f "${SCRIPT_DIR}/install_zpmod.sh" ]; then
-    LOCAL_INSTALL_ZPMOD="${SCRIPT_DIR}/install_zpmod.sh"
-  fi
-fi
-
 fetch_to_file() {
-  _dest="$1"
+  _fetch_dest="$1"
   shift
-  _has_fetcher=0
-
-  for _src; do
-    [ -n "${_src}" ] || continue
-    case "${_src}" in
+  _fetch_has_tool=0
+  for _fetch_source; do
+    [ -n "${_fetch_source}" ] || continue
+    case "${_fetch_source}" in
     http://* | https://*)
       if command -v curl >/dev/null 2>&1; then
-        _has_fetcher=1
-        if command curl -fsSL "${_src}" -o "${_dest}" 2>/dev/null; then
-          return 0
-        fi
+        _fetch_has_tool=1
+        command curl -fsSL "${_fetch_source}" -o "${_fetch_dest}" 2>/dev/null && return 0
       elif command -v wget >/dev/null 2>&1; then
-        _has_fetcher=1
-        if command wget -qO "${_dest}" "${_src}" 2>/dev/null; then
-          return 0
-        fi
+        _fetch_has_tool=1
+        command wget -qO "${_fetch_dest}" "${_fetch_source}" 2>/dev/null && return 0
       fi
       ;;
     *)
-      if [ -r "${_src}" ]; then
-        command cp "${_src}" "${_dest}"
-        return 0
+      if [ -r "${_fetch_source}" ]; then
+        command cp "${_fetch_source}" "${_fetch_dest}" && return 0
       fi
       ;;
     esac
   done
-
-  if [ "${_has_fetcher}" -eq 0 ]; then
-    printf '%s\n' "-- ERROR -- curl or wget is required to download installer assets" >&2
-  fi
+  [ "${_fetch_has_tool}" -ne 0 ] || printf '%s\n' '-- ERROR -- curl or wget is required to download installer assets' >&2
   return 1
 }
 
-is_absolute_path() {
-  case "${1-}" in
-  /*) return 0 ;;
-  *) return 1 ;;
-  esac
-}
-
-zsh_single_quote() {
-  # Single-quoted Zsh text is inert; represent an embedded quote by ending the
-  # quote, escaping one literal quote, and reopening it.
-  printf "'"
-  printf '%s' "$1" | command sed "s/'/'\\\\''/g"
-  printf "'"
-}
-
-zi_home_has_installation() {
-  [ -f "$1/bin/zi.zsh" ] ||
-    [ -d "$1/plugins" ] ||
-    [ -d "$1/snippets" ] ||
-    [ -d "$1/completions" ] ||
-    [ -d "$1/zmodules" ]
-}
-
-if [ "${AOPT}" = loader ]; then
-  if is_absolute_path "${XDG_CONFIG_HOME-}"; then
-    ZI_CONFIG_DIR="${XDG_CONFIG_HOME}/zi"
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
   else
-    ZI_CONFIG_DIR="${HOME}/.config/zi"
-  fi
-  loader_tmp="${WORKDIR}/init.zsh.tmp"
-  command mkdir -p "${ZI_CONFIG_DIR}"
-  set +e
-  fetch_to_file "${ZI_CONFIG_DIR}/init.zsh" \
-    "${LOCAL_INIT_ZSH}" \
-    "https://raw.githubusercontent.com/z-shell/src/main/public/zsh/init.zsh" \
-    "https://raw.githubusercontent.com/z-shell/src/main/lib/zsh/init.zsh"
-  fetch_status=$?
-  set -e
-  if [ "${fetch_status}" -ne 0 ]; then
-    printf '%s\n' "-- ERROR -- failed to retrieve init.zsh" >&2
+    printf '%s\n' '-- ERROR -- sha256sum or shasum is required' >&2
     exit 1
   fi
-  # shellcheck disable=SC2016
-  command sed 's|: "${ZI\[STREAM\]:=main}"|: "${ZI[STREAM]:='"${BOPT}"'}"|' "${ZI_CONFIG_DIR}/init.zsh" >"${loader_tmp}" &&
-    command mv "${loader_tmp}" "${ZI_CONFIG_DIR}/init.zsh"
-  command chmod go-w "${ZI_CONFIG_DIR}" && command chmod a+x "${ZI_CONFIG_DIR}/init.zsh"
-fi
-
-if [ -z "${ZI_HOME-}" ]; then
-  if is_absolute_path "${XDG_DATA_HOME-}"; then
-    _zi_data_base="${XDG_DATA_HOME}"
-  else
-    _zi_data_base="${HOME}/.local/share"
-  fi
-  _zi_legacy_home="${HOME}/.zi"
-  _zi_xdg_home="${_zi_data_base}/zi"
-  _zi_legacy_present=0
-  _zi_xdg_present=0
-  zi_home_has_installation "${_zi_legacy_home}" && _zi_legacy_present=1
-  zi_home_has_installation "${_zi_xdg_home}" && _zi_xdg_present=1
-
-  if [ "${_zi_legacy_present}" -eq 1 ] && [ "${_zi_xdg_present}" -eq 1 ]; then
-    if [ -f "${_zi_xdg_home}/bin/zi.zsh" ] && [ ! -f "${_zi_legacy_home}/bin/zi.zsh" ]; then
-      ZI_HOME="${_zi_xdg_home}"
-    else
-      ZI_HOME="${_zi_legacy_home}"
-      printf '%s\n' "Zi installer: both legacy and XDG homes were detected; retaining ${ZI_HOME}. Set ZI_HOME explicitly to select another root. No data was moved." >&2
-    fi
-  elif [ "${_zi_legacy_present}" -eq 1 ]; then
-    ZI_HOME="${_zi_legacy_home}"
-  else
-    ZI_HOME="${_zi_xdg_home}"
-  fi
-fi
-
-if [ -z "${ZI_BIN_DIR_NAME-}" ]; then
-  ZI_BIN_DIR_NAME="bin"
-fi
-
-ZI_LOADER_PATHS_EXPLICIT=0
-ZI_LOADER_HOME_TEXT=""
-ZI_LOADER_BIN_TEXT=""
-if [ "${AOPT}" = loader ] &&
-  { [ "${ZI_HOME_EXPLICIT}" -eq 1 ] || [ "${ZI_BIN_DIR_NAME_EXPLICIT}" -eq 1 ]; }; then
-  ZI_LOADER_PATHS_EXPLICIT=1
-  ZI_LOADER_HOME_TEXT="$(zsh_single_quote "${ZI_HOME}")"
-  ZI_LOADER_BIN_TEXT="$(zsh_single_quote "${ZI_HOME}/${ZI_BIN_DIR_NAME}")"
-fi
-
-if ! test -d "${ZI_HOME}"; then
-  command mkdir -p "${ZI_HOME}"
-  command chmod 700 "${ZI_HOME}"
-fi
-
-if ! command -v git >/dev/null 2>&1; then
-  printf '%s\n' "[1;31m▓▒░[0m Something went wrong: no [1;32mgit[0m available, cannot proceed."
-  exit 1
-fi
-
-# -b is used as a fetch refspec and inside generated Zsh: accept only a
-# well-formed branch name (no ':', no leading '-', no '..').
-if ! command git check-ref-format --branch "${BOPT}" >/dev/null 2>&1; then
-  printf '%s\n' "-- ERROR -- Invalid -b value: '${BOPT}' is not a valid branch name." >&2
-  exit 1
-fi
-
-# Get the download-progress bar tool
-command mkdir -p /tmp/zi
-cd /tmp/zi || exit 1
-set +e
-fetch_to_file /tmp/zi/git-process-output.zsh \
-  "" \
-  "https://raw.githubusercontent.com/z-shell/zi/main/public/zsh/git-process-output.zsh" \
-  "https://raw.githubusercontent.com/z-shell/zi/main/lib/zsh/git-process-output.zsh"
-fetch_status=$?
-set -e
-if [ "${fetch_status}" -ne 0 ]; then
-  printf '%s\n' "-- ERROR -- failed to retrieve git-process-output.zsh" >&2
-  exit 1
-fi
-command chmod a+x /tmp/zi/git-process-output.zsh
-
-if test -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}/.git"; then
-  _zi_valid=0
-  if test -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh"; then
-    # Canonical zi remote URLs (HTTPS and SSH, with and without .git suffix)
-    case "$(command git -C "${ZI_HOME}/${ZI_BIN_DIR_NAME}" remote get-url origin 2>/dev/null || true)" in
-    https://github.com/z-shell/zi | https://github.com/z-shell/zi.git | \
-      git@github.com:z-shell/zi | git@github.com:z-shell/zi.git)
-      _zi_valid=1
-      ;;
-    esac
-  fi
-  if [ "${_zi_valid}" -ne 1 ]; then
-    printf '%s\n' "[1;31m▓▒░[0m ${ZI_HOME}/${ZI_BIN_DIR_NAME} contains a .git directory but does not appear to be a zi repository." >&2
-    printf '%s\n' "[1;31m▓▒░[0m Expected zi.zsh and a z-shell/zi remote origin. Unset ZI_HOME/ZI_BIN_DIR_NAME or remove the directory to install fresh." >&2
-    exit 1
-  fi
-  cd "${ZI_HOME}/${ZI_BIN_DIR_NAME}" || exit 1
-  printf '%s\n' "[1;34m▓▒░[0m Updating [1;36m(z-shell/zi)[1;33m plugin manager[0m at [1;35m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
-  # Match `zi self-update`: fetch the requested branch and fast-forward only.
-  # Local state is never discarded; refuse loudly when it cannot be advanced.
-  if ! command git fetch -q origin "refs/heads/${BOPT}"; then
-    printf '%s\n' "-- ERROR -- failed to fetch origin ${BOPT} into ${ZI_HOME}/${ZI_BIN_DIR_NAME}" >&2
-    exit 1
-  fi
-  if ! command git merge -q --ff-only FETCH_HEAD; then
-    printf '%s\n' "-- ERROR -- ${ZI_HOME}/${ZI_BIN_DIR_NAME} cannot be fast-forwarded to origin/${BOPT}; local state was left untouched:" >&2
-    command git status --short --branch 2>/dev/null | head -20 >&2
-    printf '%s\n' "-- ERROR -- resolve the checkout state shown above so HEAD can fast-forward to origin/${BOPT} (move local commits to another branch, or drop changes you do not need), then rerun the installer." >&2
-    exit 1
-  fi
-else
-  cd "${ZI_HOME}" || exit 1
-  printf '%s\n' "[1;34m▓▒░[0m Installing [1;36m(z-shell/zi)[1;33m plugin manager[0m at [1;35m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
-  { git clone --progress --depth=1 --branch "${BOPT}" https://github.com/z-shell/zi.git "${ZI_BIN_DIR_NAME}" \
-    2>&1 | { /tmp/zi/git-process-output.zsh || cat; }; } 2>/dev/null
-  if [ -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}" ] && [ -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh" ]; then
-    printf '%s\n' "[1;34m▓▒░[0m Successfully installed at [1;32m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
-  else
-    printf '%s\n' "[1;31m▓▒░[0m Something went wrong, couldn't install ZI at [1;33m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
-    exit 1
-  fi
-fi
-
-#
-# Modify .zshrc
-#
-
-MAIN_PROFILE() {
-  THE_ZDOTDIR="${ZDOTDIR:-${HOME}}"
-  ZSHRC_INTEGRATED=0
-  # Detect an existing Zi integration by a real source line. A comment that
-  # merely mentions the file name must not suppress the integration.
-  if grep -E '^[[:space:]]*(source|\.)[[:space:]]+[^#]*(zi|init|zinit)\.zsh(["'"'"'[:space:]]|$)' "${THE_ZDOTDIR}/.zshrc" >/dev/null 2>&1; then
-    printf '%s\n' "[34m▓▒░[34m Seems that .zshrc already sources Zi - the integration block will not be added."
-    ZSHRC_INTEGRATED=1
-  fi
-  # The .zshrc text refers to the home through $HOME; the installer itself
-  # keeps using the real path.
-  # shellcheck disable=SC2016
-  case "${ZI_HOME}" in
-  "${HOME}") ZI_HOME_TEXT='$HOME' ;;
-  "${HOME}"/*) ZI_HOME_TEXT="\$HOME${ZI_HOME#"${HOME}"}" ;;
-  *) ZI_HOME_TEXT="${ZI_HOME}" ;;
-  esac
-  if [ "${ZOPT}" != skip ] && [ "${ZSHRC_INTEGRATED}" -eq 0 ] && [ "${AOPT}" != loader ]; then
-    printf '%s\n' "[34m▓▒░[0m Updating ${THE_ZDOTDIR}/.zshrc"
-    command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
-if [[ ! -f ${ZI_HOME_TEXT}/${ZI_BIN_DIR_NAME}/zi.zsh ]]; then
-  print -P "%F{33}▓▒░ %F{160}Installing (%F{33}z-shell/zi%F{160})…%f"
-  command mkdir -p "${ZI_HOME_TEXT}" && command chmod go-rwX "${ZI_HOME_TEXT}"
-  command git clone -q --filter=blob:none --single-branch --branch "${BOPT}" https://github.com/z-shell/zi "${ZI_HOME_TEXT}/${ZI_BIN_DIR_NAME}" && \\
-    print -P "%F{33}▓▒░ %F{34}Installation successful.%f%b" || \\
-    print -P "%F{160}▓▒░ The clone has failed.%f%b"
-fi
-source "${ZI_HOME_TEXT}/${ZI_BIN_DIR_NAME}/zi.zsh"
-autoload -Uz _zi
-(( \${+_comps} )) && _comps[zi]=_zi
-# examples here -> https://wiki.zshell.dev/ecosystem/category/-annexes
-zicompinit # <- https://wiki.zshell.dev/docs/guides/commands
-EOF
-    printf '%s\n' "[34m▓▒░[0m[1;36m Minimal configuration[0m"
-  fi
-  if [ "${AOPT}" = loader ] && [ "${ZOPT}" != skip ] && [ "${ZSHRC_INTEGRATED}" -eq 0 ]; then
-    command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
-if [[ -n \${XDG_CONFIG_HOME:-} && \${XDG_CONFIG_HOME} == /* ]]; then
-  ZI_LOADER_CONFIG_HOME="\${XDG_CONFIG_HOME}/zi"
-else
-  ZI_LOADER_CONFIG_HOME="\${HOME}/.config/zi"
-fi
-EOF
-    if [ "${ZI_LOADER_PATHS_EXPLICIT}" -eq 1 ]; then
-      command printf '%s\n' \
-        'typeset -gA ZI' \
-        "ZI[HOME_DIR]=${ZI_LOADER_HOME_TEXT}" \
-        "ZI[BIN_DIR]=${ZI_LOADER_BIN_TEXT}" >>"${THE_ZDOTDIR}/.zshrc"
-    fi
-    command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
-if [[ -r "\${ZI_LOADER_CONFIG_HOME}/init.zsh" ]]; then
-  source "\${ZI_LOADER_CONFIG_HOME}/init.zsh" && zzinit
-fi
-unset ZI_LOADER_CONFIG_HOME
-EOF
-    printf '%s\n' "[34m▓▒░[0m[1;36m Loader added[0m"
-  fi
 }
 
-ANNEX_PROFILE() {
-  if [ "${AOPT}" != annex ] && [ "${AOPT}" != zunit ]; then
-    printf '%s\n' "[34m▓▒░[0m[1;36m Skipped all annexes[0m"
-    return 0
-  fi
-  if [ "${ZOPT}" = skip ]; then
-    printf '%s\n' "[34m▓▒░[0m[1;36m .zshrc changes were skipped (-i skip); annexes were not configured[0m"
-    return 0
-  fi
-  # Rerunning the installer must not append the block a second time.
-  if grep -E '^[^#]*z-shell/z-a-meta-plugins([[:space:]]|$)' "${THE_ZDOTDIR}/.zshrc" >/dev/null 2>&1; then
-    printf '%s\n' "[34m▓▒░[0m[1;36m .zshrc already loads z-shell/z-a-meta-plugins - annex block not added again[0m"
-    return 0
-  fi
-  # The burst file holds only the recipe; zicompinit belongs to .zshrc and
-  # must not run in the non-interactive burst shell (compinit aborts there).
-  file="${WORKDIR}/temp-zsh-config"
-  if [ "${AOPT}" = annex ]; then
-    command cat <<-EOF >"${file}"
-zi light-mode for \\
-  z-shell/z-a-meta-plugins \\
-  @annexes # <- https://wiki.zshell.dev/ecosystem/category/-annexes
-EOF
-    printf '%s\n' "[34m▓▒░[0m[1;36m Installing annexes[0m"
-    command cat "${file}" >>"${THE_ZDOTDIR}/.zshrc"
-    command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
-# examples here -> https://wiki.zshell.dev/community/gallery/collection
-zicompinit # <- https://wiki.zshell.dev/docs/guides/commands
-EOF
-  else
-    command cat <<-EOF >"${file}"
-zi light-mode for \\
-  z-shell/z-a-meta-plugins \\
-  @annexes @zunit
-EOF
-    printf '%s\n' "[34m▓▒░[0m[1;36m Installing annexes + zunit[0m"
-    command cat "${file}" >>"${THE_ZDOTDIR}/.zshrc"
-  fi
-  ANNEX_BURST "${file}"
+verify_asset() {
+  _verify_file="$1"
+  _verify_name="$2"
+  _verify_checksum="$3"
+  _verify_expected="$(awk -v name="${_verify_name}" '$2 == name {print $1}' "${_verify_checksum}")"
+  [ -n "${_verify_expected}" ] || {
+    printf '%s\n' "-- ERROR -- checksum entry missing for ${_verify_name}" >&2
+    exit 1
+  }
+  [ "$(sha256_file "${_verify_file}")" = "${_verify_expected}" ] || {
+    printf '%s\n' "-- ERROR -- checksum verification failed for ${_verify_name}" >&2
+    exit 1
+  }
 }
 
-ANNEX_BURST() {
-  # Install the annexes now without an interactive shell and with -f, so no
-  # user startup file (not even .zshenv) runs: source only zi.zsh and the
-  # fragment just written. A failure here must not abort an install whose
-  # .zshrc changes are already in place.
-  if zsh -f -c 'builtin source "$1" && builtin source "$2" && @zi-scheduler burst' zsh \
-    "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh" "$1"; then
-    return 0
-  fi
-  printf '%s\n' "[34m▓▒░[0m[1;33m Annexes could not be installed now; they will be installed on the next shell start.[0m" >&2
-  return 0
-}
+LOCAL_INIT=""
+LOCAL_SETUP=""
+LOCAL_PROFILES=""
+LOCAL_CHECKSUM=""
+LOCAL_ZPMOD=""
+if [ -n "${SCRIPT_DIR}" ]; then
+  [ ! -f "${SCRIPT_DIR}/../zsh/init.zsh" ] || LOCAL_INIT="${SCRIPT_DIR}/../zsh/init.zsh"
+  [ ! -f "${SCRIPT_DIR}/setup.sh" ] || LOCAL_SETUP="${SCRIPT_DIR}/setup.sh"
+  [ ! -f "${SCRIPT_DIR}/../setup/profiles.tsv" ] || LOCAL_PROFILES="${SCRIPT_DIR}/../setup/profiles.tsv"
+  [ ! -f "${SCRIPT_DIR}/../checksum.txt" ] || LOCAL_CHECKSUM="${SCRIPT_DIR}/../checksum.txt"
+  [ ! -f "${SCRIPT_DIR}/install_zpmod.sh" ] || LOCAL_ZPMOD="${SCRIPT_DIR}/install_zpmod.sh"
+fi
 
-ZPMOD_PROFILE() {
-  _zpmod_sh=""
-  if [ -n "${LOCAL_INSTALL_ZPMOD}" ]; then
-    _zpmod_sh="${LOCAL_INSTALL_ZPMOD}"
-  else
-    _zpmod_sh="${WORKDIR}/install_zpmod.sh"
-    set +e
-    fetch_to_file "${_zpmod_sh}" \
-      "" \
-      "https://raw.githubusercontent.com/z-shell/src/main/public/sh/install_zpmod.sh" \
-      "https://raw.githubusercontent.com/z-shell/src/main/lib/sh/install_zpmod.sh"
-    fetch_status=$?
-    set -e
-    if [ "${fetch_status}" -ne 0 ]; then
-      printf '%s\n' "-- ERROR -- failed to download install_zpmod.sh" >&2
+CHECKSUM_ASSET="${LOCAL_CHECKSUM}"
+if [ -z "${CHECKSUM_ASSET}" ]; then
+  CHECKSUM_ASSET="${WORKDIR}/checksum.txt"
+  fetch_to_file "${CHECKSUM_ASSET}" \
+    https://raw.githubusercontent.com/z-shell/src/main/public/checksum.txt || {
+    printf '%s\n' '-- ERROR -- failed to retrieve checksum manifest' >&2
+    exit 1
+  }
+fi
+
+INIT_ASSET="${LOCAL_INIT}"
+if [ -z "${INIT_ASSET}" ]; then
+  INIT_ASSET="${WORKDIR}/init.zsh"
+  fetch_to_file "${INIT_ASSET}" \
+    https://raw.githubusercontent.com/z-shell/src/main/public/zsh/init.zsh || {
+    printf '%s\n' '-- ERROR -- failed to retrieve init.zsh' >&2
+    exit 1
+  }
+fi
+
+SETUP_ASSET="${LOCAL_SETUP}"
+if [ -z "${SETUP_ASSET}" ]; then
+  SETUP_ASSET="${WORKDIR}/setup.sh"
+  fetch_to_file "${SETUP_ASSET}" \
+    https://raw.githubusercontent.com/z-shell/src/main/public/sh/setup.sh || {
+    printf '%s\n' '-- ERROR -- failed to retrieve setup.sh' >&2
+    exit 1
+  }
+fi
+
+PROFILES_ASSET="${LOCAL_PROFILES}"
+if [ -z "${PROFILES_ASSET}" ]; then
+  PROFILES_ASSET="${WORKDIR}/profiles.tsv"
+  fetch_to_file "${PROFILES_ASSET}" \
+    https://raw.githubusercontent.com/z-shell/src/main/public/setup/profiles.tsv || {
+    printf '%s\n' '-- ERROR -- failed to retrieve setup profile table' >&2
+    exit 1
+  }
+fi
+
+verify_asset "${INIT_ASSET}" public/zsh/init.zsh "${CHECKSUM_ASSET}"
+verify_asset "${SETUP_ASSET}" public/sh/setup.sh "${CHECKSUM_ASSET}"
+verify_asset "${PROFILES_ASSET}" public/setup/profiles.tsv "${CHECKSUM_ASSET}"
+
+PLAN_DIR="${WORKDIR}/plan"
+if [ "${AOPT}" = zpmod ]; then PLAN_PROFILE=loader; else PLAN_PROFILE="${AOPT}"; fi
+
+create_plan() (
+  set -- plan \
+    --plan "${PLAN_DIR}" \
+    --profile "${PLAN_PROFILE}" \
+    --init "${INIT_ASSET}" \
+    --profiles "${PROFILES_ASSET}" \
+    --checksum "${CHECKSUM_ASSET}"
+  if [ "${BOPT_EXPLICIT}" -eq 1 ]; then set -- "$@" --ref "${BOPT}"; fi
+  if [ -n "${ZI_HOME-}" ]; then set -- "$@" --zi-home "${ZI_HOME}"; fi
+  if [ -n "${ZI_BIN_DIR_NAME-}" ]; then set -- "$@" --zi-bin-dir "${ZI_BIN_DIR_NAME}"; fi
+  if [ "${ZOPT}" = skip ]; then set -- "$@" --skip-zshrc; fi
+  sh "${SETUP_ASSET}" "$@"
+)
+create_plan
+
+PLAN_ID="$(cat "${PLAN_DIR}/plan.id")"
+sh "${SETUP_ASSET}" apply --plan "${PLAN_DIR}" --phase checkout --expect "${PLAN_ID}"
+sh "${SETUP_ASSET}" apply --plan "${PLAN_DIR}" --phase files --expect "${PLAN_ID}"
+
+CHECKOUT_PATH="$(sed -n 's/^checkout_path=//p' "${PLAN_DIR}/plan.meta")"
+if [ "${AOPT}" = zpmod ]; then
+  ZPMOD_ASSET="${LOCAL_ZPMOD}"
+  if [ -z "${ZPMOD_ASSET}" ]; then
+    ZPMOD_ASSET="${WORKDIR}/install_zpmod.sh"
+    fetch_to_file "${ZPMOD_ASSET}" \
+      https://raw.githubusercontent.com/z-shell/src/main/public/sh/install_zpmod.sh || {
+      printf '%s\n' '-- ERROR -- failed to retrieve install_zpmod.sh' >&2
       exit 1
-    fi
-    command chmod a+x "${_zpmod_sh}"
+    }
+    verify_asset "${ZPMOD_ASSET}" public/sh/install_zpmod.sh "${CHECKSUM_ASSET}"
   fi
-
-  if [ "$#" -gt 0 ]; then
-    exec sh "${_zpmod_sh}" "$@"
-  fi
-  exec sh "${_zpmod_sh}"
-}
-
-CLOSE_PROFILE() {
-  git_refs="$(
-    command cd "${ZI_HOME}/${ZI_BIN_DIR_NAME}" || true
-    command git log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit | head -5
-  )"
-  printf '%s\n' "[34m▓▒░[0m[38;5;226m Latest changes:[0m"
-  printf '%s\n' "${git_refs}"
-}
-
-MAIN() {
-  if [ "${AOPT}" = zpmod ]; then
-    if [ "$#" -gt 0 ]; then
-      ZPMOD_PROFILE "$@"
-    else
-      ZPMOD_PROFILE
-    fi
-  else
-    MAIN_PROFILE
-    ANNEX_PROFILE
-    CLOSE_PROFILE
-  fi
-  command cat <<-EOF
-[34m▓▒░[0m[1;36m ■■■■■■■■■■■■■■■■■ Successfully installed ❮ ZI ❯ ■■■■■■■■■[0m
-[34m▓▒░[0m[38;5;226m Wiki:         https://wiki.zshell.dev[0m
-[34m▓▒░[0m[38;5;226m Issues:       https://github.com/z-shell/zi/issues[0m
-[34m▓▒░[0m[38;5;226m Discussions:  https://discussions.zshell.dev[0m
-[34m▓▒░[0m[1;36m ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■[0m
-EOF
-  exit 0
-}
-
-if [ "$#" -gt 0 ]; then
-  MAIN "$@"
-else
-  MAIN
+  if [ "$#" -gt 0 ]; then sh "${ZPMOD_ASSET}" "$@"; else sh "${ZPMOD_ASSET}"; fi
 fi
+
+printf '%s\n' "Successfully installed at ${CHECKOUT_PATH}"
+if [ "${PLAN_PROFILE}" = annex ] || [ "${PLAN_PROFILE}" = zunit ]; then
+  printf '%s\n' 'Zi installer: recipe installation is deferred to the first shell start.'
+fi
+
+if [ -d "${CHECKOUT_PATH}/.git" ]; then
+  git_refs="$(command git -C "${CHECKOUT_PATH}" log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit 2>/dev/null | head -5 || true)"
+  if [ -n "${git_refs}" ]; then
+    printf '%s\n' 'Latest changes:'
+    printf '%s\n' "${git_refs}"
+  fi
+fi
+
+command cat <<'EOF'
+Successfully installed Zi.
+Wiki:         https://wiki.zshell.dev
+Issues:       https://github.com/z-shell/zi/issues
+Discussions:  https://discussions.zshell.dev
+EOF

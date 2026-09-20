@@ -11,6 +11,10 @@ ROOT="$(
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/zi-test.XXXXXX")" || exit 1
 trap 'rm -rf "${TMP_ROOT:?}"' EXIT INT TERM
 
+# Keep fixture homes isolated from the caller's desktop environment. Individual
+# tests set the XDG variables they exercise.
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME ZDOTDIR ZI_HOME ZI_BIN_DIR_NAME
+
 fail() {
   printf '%s\n' "not ok - $*" >&2
   exit 1
@@ -49,6 +53,7 @@ sha256_file() {
 check_syntax() {
   sh -n "${ROOT}/public/sh/install.sh"
   sh -n "${ROOT}/public/sh/install_zpmod.sh"
+  sh -n "${ROOT}/public/sh/setup.sh"
   sh -n "${ROOT}/public/sh/sync-init.sh"
   command -v zsh >/dev/null 2>&1 || fail "zsh is required for init.zsh syntax checks"
   zsh -n "${ROOT}/public/zsh/init.zsh"
@@ -358,6 +363,25 @@ if [ -z "${out}" ] && [ "${remote_name}" -eq 1 ]; then
 fi
 
 case "${url}" in
+  */public/sh/install.sh)
+    if [ -n "${out}" ]; then
+      cp "${ZI_SRC_TEST_ROOT}/public/sh/install.sh" "${out}"
+    else
+      cat "${ZI_SRC_TEST_ROOT}/public/sh/install.sh"
+    fi
+    ;;
+  */public/checksum.txt)
+    [ -n "${out}" ] || { printf '%s\n' "curl test double: missing output path" >&2; exit 64; }
+    cp "${ZI_SRC_TEST_ROOT}/public/checksum.txt" "${out}"
+    ;;
+  */public/sh/setup.sh)
+    [ -n "${out}" ] || { printf '%s\n' "curl test double: missing output path" >&2; exit 64; }
+    cp "${ZI_SRC_TEST_ROOT}/public/sh/setup.sh" "${out}"
+    ;;
+  */public/setup/profiles.tsv)
+    [ -n "${out}" ] || { printf '%s\n' "curl test double: missing output path" >&2; exit 64; }
+    cp "${ZI_SRC_TEST_ROOT}/public/setup/profiles.tsv" "${out}"
+    ;;
   */public/zsh/init.zsh)
     if [ -n "${out}" ]; then
       cp "${ZI_SRC_TEST_ROOT}/public/zsh/init.zsh" "${out}"
@@ -433,6 +457,17 @@ case "${cmd}" in
     printf '%s\n' "## main...origin/main [ahead 1]"
     printf '%s\n' " M zi.zsh"
     ;;
+  rev-parse)
+    [ "${1:-}" = "HEAD" ] || { printf '%s\n' "installers.sh git test double: expected rev-parse HEAD" >&2; exit 65; }
+    printf '%s\n' "${ZI_SRC_TEST_FAKE_HEAD:-1111111111111111111111111111111111111111}"
+    ;;
+  symbolic-ref)
+    [ "${1:-}" = "--quiet" ] && [ "${2:-}" = "--short" ] && [ "${3:-}" = "HEAD" ] || {
+      printf '%s\n' "installers.sh git test double: unexpected symbolic-ref arguments" >&2
+      exit 65
+    }
+    printf '%s\n' "${ZI_SRC_TEST_FAKE_BRANCH:-main}"
+    ;;
   log)
     printf '%s\n' 'abcdef0 - fake zi commit (now) <test>'
     ;;
@@ -500,10 +535,36 @@ test_loader_install() {
 
   # shellcheck disable=SC2016
   contains "${config}/zi/init.zsh" ': "${ZI[STREAM]:=feature/test}"'
-  # shellcheck disable=SC2016
-  contains "${home}/.zshrc" 'source "${ZI_LOADER_CONFIG_HOME}/init.zsh" && zzinit'
+  contains "${home}/.zshrc" "source '${config}/zi/setup.zsh'"
+  contains "${config}/zi/setup.zsh" "source '${config}/zi/setup/pre.zsh'"
+  contains "${config}/zi/setup.zsh" "source '${config}/zi/init.zsh'"
+  contains "${config}/zi/setup.zsh" '{ step=zzinit; zzinit; }'
+  zsh -n "${config}/zi/setup.zsh"
   [ -f "${data}/zi/bin/zi.zsh" ] || fail "loader install did not clone Zi into XDG data home"
   pass "loader install uses XDG paths and branch override"
+}
+
+test_curl_pipe_install() {
+  home="${TMP_ROOT}/curl-pipe-home"
+  config="${TMP_ROOT}/curl-pipe-config"
+  data="${TMP_ROOT}/curl-pipe-data"
+  command mkdir -p "${home}"
+
+  ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    curl -fsSL https://raw.githubusercontent.com/z-shell/src/main/public/sh/install.sh |
+    HOME="${home}" \
+      ZDOTDIR="${home}" \
+      XDG_CONFIG_HOME="${config}" \
+      XDG_DATA_HOME="${data}" \
+      ZI_SRC_TEST_ROOT="${ROOT}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh >/dev/null
+
+  [ -f "${data}/zi/bin/zi.zsh" ] || fail "curl-piped installer did not clone Zi"
+  contains "${home}/.zshrc" "source '${config}/zi/setup.zsh'"
+  contains "${config}/zi/setup.zsh" "source '${config}/zi/init.zsh'"
+  pass "curl-piped install.sh fetches companion assets and installs Zi"
 }
 
 test_xdg_data_home_install() {
@@ -605,6 +666,12 @@ test_standalone_zpmod_delegation() {
   marker="${TMP_ROOT}/zpmod-marker"
   command mkdir -p "${standalone_dir}" "${home}" "${data}"
   command cp "${ROOT}/public/sh/install.sh" "${standalone_dir}/install.sh"
+  command cat >"${standalone_dir}/install_zpmod.sh" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+printf '%s\n' 'zpmod helper executed' >"${ZI_SRC_TEST_MARKER:?}"
+EOF
+  command chmod +x "${standalone_dir}/install_zpmod.sh"
 
   HOME="${home}" \
     ZDOTDIR="${home}" \
@@ -614,8 +681,8 @@ test_standalone_zpmod_delegation() {
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${standalone_dir}/install.sh" -a zpmod -i skip >/dev/null
 
-  contains "${marker}" 'zpmod fallback executed'
-  pass "standalone install.sh fetches zpmod helper"
+  contains "${marker}" 'zpmod helper executed'
+  pass "standalone install.sh delegates to its adjacent zpmod helper"
 }
 
 test_update_valid_zi_clone() {
@@ -654,7 +721,7 @@ test_update_rejects_foreign_repo() {
   set -e
 
   [ "${exit_code}" -ne 0 ] || fail "install.sh should have rejected a foreign git repository"
-  contains "${err}" "does not appear to be a zi repository"
+  contains "${err}" "has no zi.zsh"
   pass "update path rejects an unrecognised git repository"
 }
 
@@ -678,7 +745,7 @@ test_update_rejects_wrong_remote() {
   set -e
 
   [ "${exit_code}" -ne 0 ] || fail "install.sh should have rejected a repo with a non-zi remote"
-  contains "${err}" "does not appear to be a zi repository"
+  contains "${err}" "is not a z-shell/zi checkout"
   pass "update path rejects a repository with a non-zi remote origin"
 }
 
@@ -698,8 +765,8 @@ test_update_fast_forwards_without_reset() {
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${ROOT}/public/sh/install.sh" -i skip -b feature/test >/dev/null
 
-  contains "${git_log}" 'fetch -q origin refs/heads/feature/test'
-  contains "${git_log}" 'merge -q --ff-only FETCH_HEAD'
+  contains "${git_log}" 'fetch origin refs/heads/feature/test'
+  contains "${git_log}" 'merge --ff-only FETCH_HEAD'
   if grep -E '^(clean|reset|pull)( |$)' "${git_log}" >/dev/null 2>&1; then
     fail "update path still discards local state (clean, reset, or pull was invoked)"
   fi
@@ -745,10 +812,11 @@ test_zshrc_comment_does_not_suppress_integration() {
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${ROOT}/public/sh/install.sh" >/dev/null
 
-  contains "${home}/.zshrc" "source \"${data}/zi/bin/zi.zsh\""
+  contains "${home}/.zshrc" '# >>> zi setup >>>'
+  contains "${home}/.zshrc" "source '${home}/.config/zi/setup.zsh'"
   pass "a comment mentioning init.zsh does not suppress the .zshrc integration"
 
-  # A real source line is still detected and nothing is appended.
+  # An unrecognised real source line is left untouched and blocks apply.
   home2="${TMP_ROOT}/probe-home-sourced"
   data2="${TMP_ROOT}/probe-data-sourced"
   command mkdir -p "${home2}"
@@ -756,21 +824,29 @@ test_zshrc_comment_does_not_suppress_integration() {
   printf '%s\n' 'source "$HOME/.zi/bin/zi.zsh"' >"${home2}/.zshrc"
   before="$(sha256_file "${home2}/.zshrc")"
 
+  err2="${TMP_ROOT}/probe-home-sourced-err"
+  set +e
   HOME="${home2}" \
     ZDOTDIR="${home2}" \
     XDG_DATA_HOME="${data2}" \
     ZI_SRC_TEST_ROOT="${ROOT}" \
     PATH="${FAKE_BIN}:${PATH}" \
-    sh "${ROOT}/public/sh/install.sh" >/dev/null
+    sh "${ROOT}/public/sh/install.sh" >/dev/null 2>"${err2}"
+  exit_code="$?"
+  set -e
 
-  [ "$(sha256_file "${home2}/.zshrc")" = "${before}" ] || fail "an existing source line did not suppress the integration block"
-  pass "an existing Zi source line keeps .zshrc unchanged"
+  [ "${exit_code}" -ne 0 ] || fail "an unrecognised Zi source line was accepted"
+  [ "$(sha256_file "${home2}/.zshrc")" = "${before}" ] || fail "an unrecognised Zi source line was modified"
+  contains "${err2}" 'unrecognised Zi integration remains'
+  pass "an unrecognised Zi source line is refused without mutation"
 }
 
 test_annex_rerun_is_idempotent() {
   home="${TMP_ROOT}/annex-home"
   data="${TMP_ROOT}/annex-data"
   zsh_log="${TMP_ROOT}/annex-zsh-log"
+  shell_file="${home}/.config/zi/setup/shell.zsh"
+  receipt="${home}/.config/zi/setup/receipt"
   command mkdir -p "${home}"
 
   for run in first second; do
@@ -783,23 +859,16 @@ test_annex_rerun_is_idempotent() {
       sh "${ROOT}/public/sh/install.sh" -a annex >/dev/null || fail "annex install (${run} run) failed"
   done
 
-  meta_lines="$(grep -c 'z-shell/z-a-meta-plugins' "${home}/.zshrc")"
-  [ "${meta_lines}" -eq 1 ] || fail "annex block appended ${meta_lines} times across two runs"
-  contains "${home}/.zshrc" "source \"${data}/zi/bin/zi.zsh\""
-  # The burst ran once, non-interactively, sourcing only zi.zsh and the fragment.
-  burst_lines="$(wc -l <"${zsh_log}" | tr -d ' ')"
-  [ "${burst_lines}" -eq 1 ] || fail "expected one annex burst, saw ${burst_lines}"
-  contains "${zsh_log}" '@zi-scheduler burst'
-  # Logged with argv0 so the pattern cannot be read as grep options.
-  contains "${zsh_log}" 'zsh -f -c '
-  contains "${zsh_log}" "${data}/zi/bin/zi.zsh"
-  contains "${zsh_log}" 'temp-zsh-config'
-  # The annex-specific zicompinit reaches .zshrc (directly after the gallery
-  # comment), not only the one the default block writes.
-  if ! grep -A1 -F '# examples here -> https://wiki.zshell.dev/community/gallery/collection' "${home}/.zshrc" | grep -q '^zicompinit'; then
-    fail "annex profile did not write zicompinit after its gallery comment"
-  fi
-  pass "annex profile is idempotent across reruns and never starts an interactive shell"
+  marker_lines="$(grep -c '^# >>> zi setup >>>$' "${home}/.zshrc")"
+  [ "${marker_lines}" -eq 1 ] || fail "managed block appeared ${marker_lines} times across two runs"
+  meta_lines="$(grep -c 'z-shell/z-a-meta-plugins' "${shell_file}")"
+  [ "${meta_lines}" -eq 1 ] || fail "annex recipe appeared ${meta_lines} times across two runs"
+  contains "${shell_file}" "zi ice ver'74bd8a8bc3bcff8398420ff5a38758dec5b90e2b'"
+  contains "${shell_file}" '@annexes'
+  contains "${shell_file}" 'zicompinit'
+  contains "${receipt}" 'deferred-recipes=first-shell-start'
+  [ ! -e "${zsh_log}" ] || fail "annex install executed Zsh during apply"
+  pass "annex profile is idempotent and deferred to first shell start"
 }
 
 test_skip_leaves_annex_out() {
@@ -817,7 +886,8 @@ test_skip_leaves_annex_out() {
     sh "${ROOT}/public/sh/install.sh" -i skip -a annex >/dev/null
 
   [ ! -e "${home}/.zshrc" ] || fail "-i skip -a annex modified .zshrc"
-  [ ! -e "${zsh_log}" ] || fail "-i skip -a annex still ran the annex burst"
+  contains "${home}/.config/zi/setup/shell.zsh" '@annexes'
+  [ ! -e "${zsh_log}" ] || fail "-i skip -a annex executed Zsh"
   pass "-i skip leaves .zshrc untouched even with an annex profile"
 }
 
@@ -838,12 +908,12 @@ test_branch_option_rejects_refspec() {
   set -e
 
   [ "${exit_code}" -ne 0 ] || fail "install.sh accepted a refspec as -b"
-  contains "${err}" 'not a valid branch name'
+  contains "${err}" 'invalid ref'
   [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "install proceeded after an invalid -b value"
   pass "-b rejects values that are not a branch name"
 }
 
-test_zshrc_text_uses_home_variable() {
+test_zshrc_uses_short_entrypoint() {
   home="${TMP_ROOT}/home-text home"
   sibling="${TMP_ROOT}/home-text home-sibling"
   command mkdir -p "${home}"
@@ -855,9 +925,13 @@ test_zshrc_text_uses_home_variable() {
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${ROOT}/public/sh/install.sh" >/dev/null
 
-  # shellcheck disable=SC2016
-  contains "${home}/.zshrc" 'source "$HOME/xdg data/zi/bin/zi.zsh"'
-  pass '.zshrc refers to a home under $HOME through the variable'
+  contains "${home}/.config/zi/setup/pre.zsh" "ZI[HOME_DIR]='${home}/xdg data/zi'"
+  contains "${home}/.zshrc" "source '${home}/.config/zi/setup.zsh'"
+  [ "$(wc -l <"${home}/.zshrc" | tr -d ' ')" -eq 3 ] || fail '.zshrc managed block is not three lines'
+  if grep -F 'ZI_LOADER_CONFIG_HOME' "${home}/.zshrc" >/dev/null 2>&1; then
+    fail '.zshrc exposes the internal loader configuration variable'
+  fi
+  pass 'the managed .zshrc block is one source line between ownership markers'
 
   home2="${TMP_ROOT}/home-text-2"
   command mkdir -p "${home2}"
@@ -868,11 +942,298 @@ test_zshrc_text_uses_home_variable() {
     PATH="${FAKE_BIN}:${PATH}" \
     sh "${ROOT}/public/sh/install.sh" >/dev/null
 
-  contains "${home2}/.zshrc" "source \"${sibling}/bin/zi.zsh\""
-  if grep -F '$HOME' "${home2}/.zshrc" >/dev/null 2>&1; then
-    fail 'a sibling of $HOME was rewritten as if it were inside it'
+  contains "${home2}/.config/zi/setup/pre.zsh" "ZI[HOME_DIR]='${sibling}'"
+  pass 'a sibling of $HOME remains an exact serialized path'
+}
+
+test_setup_plan_tamper_is_rejected() {
+  tamper_home="${TMP_ROOT}/tamper-home"
+  tamper_config="${TMP_ROOT}/tamper-config"
+  tamper_data="${TMP_ROOT}/tamper-data"
+  tamper_plan="${TMP_ROOT}/tamper-plan"
+  tamper_err="${TMP_ROOT}/tamper-err"
+  command mkdir -p "${tamper_home}"
+
+  HOME="${tamper_home}" \
+    XDG_CONFIG_HOME="${tamper_config}" \
+    XDG_DATA_HOME="${tamper_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${tamper_plan}" --skip-zshrc >/dev/null
+  printf '%s\n' '# tampered' >>"${tamper_plan}/targets/pre/content"
+
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${tamper_plan}" --phase files >/dev/null 2>"${tamper_err}"
+  tamper_status="$?"
+  set -e
+
+  [ "${tamper_status}" -ne 0 ] || fail "setup.sh applied a tampered plan"
+  contains "${tamper_err}" 'plan artifact hash mismatch'
+  [ ! -e "${tamper_config}/zi" ] || fail "tampered plan created configuration files"
+  pass "setup rejects a plan whose exact content changed"
+}
+
+test_setup_target_drift_is_transactional() {
+  drift_home="${TMP_ROOT}/drift-home"
+  drift_config="${TMP_ROOT}/drift-config"
+  drift_data="${TMP_ROOT}/drift-data"
+  drift_plan="${TMP_ROOT}/drift-plan"
+  drift_err="${TMP_ROOT}/drift-err"
+  command mkdir -p "${drift_home}" "${drift_config}/zi"
+
+  HOME="${drift_home}" \
+    XDG_CONFIG_HOME="${drift_config}" \
+    XDG_DATA_HOME="${drift_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${drift_plan}" --skip-zshrc >/dev/null
+  printf '%s\n' '# appeared after planning' >"${drift_config}/zi/init.zsh"
+
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${drift_plan}" --phase files >/dev/null 2>"${drift_err}"
+  drift_status="$?"
+  set -e
+
+  [ "${drift_status}" -ne 0 ] || fail "setup.sh ignored target drift"
+  contains "${drift_err}" 'target changed after planning'
+  contains "${drift_config}/zi/init.zsh" '# appeared after planning'
+  [ ! -e "${drift_config}/zi/setup/pre.zsh" ] || fail "target drift caused a partial pre.zsh write"
+  [ ! -e "${drift_config}/zi/setup/shell.zsh" ] || fail "target drift caused a partial shell.zsh write"
+  [ ! -e "${drift_config}/zi/setup.zsh" ] || fail "target drift caused a partial setup.zsh write"
+  pass "file apply validates every precondition before mutation"
+}
+
+test_setup_symlinked_zshrc_is_refused() {
+  symlink_home="${TMP_ROOT}/symlink-home"
+  symlink_config="${TMP_ROOT}/symlink-config"
+  symlink_data="${TMP_ROOT}/symlink-data"
+  symlink_plan="${TMP_ROOT}/symlink-plan"
+  symlink_target="${TMP_ROOT}/symlink-target-zshrc"
+  symlink_err="${TMP_ROOT}/symlink-err"
+  command mkdir -p "${symlink_home}"
+  printf '%s\n' '# real startup file' >"${symlink_target}"
+  command ln -s "${symlink_target}" "${symlink_home}/.zshrc"
+  symlink_before="$(sha256_file "${symlink_target}")"
+
+  HOME="${symlink_home}" \
+    ZDOTDIR="${symlink_home}" \
+    XDG_CONFIG_HOME="${symlink_config}" \
+    XDG_DATA_HOME="${symlink_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${symlink_plan}" >/dev/null
+
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${symlink_plan}" --phase files >/dev/null 2>"${symlink_err}"
+  symlink_status="$?"
+  set -e
+
+  [ "${symlink_status}" -ne 0 ] || fail "setup.sh replaced a symlinked .zshrc"
+  contains "${symlink_err}" 'refusing symlink target'
+  contains "${symlink_err}" '# >>> zi setup >>>'
+  [ -L "${symlink_home}/.zshrc" ] || fail "setup.sh replaced the .zshrc symlink itself"
+  [ "$(sha256_file "${symlink_target}")" = "${symlink_before}" ] || fail "setup.sh changed the symlink target"
+  [ ! -e "${symlink_config}/zi" ] || fail "symlink refusal caused partial configuration writes"
+  pass "symlinked .zshrc is refused with a patch and no mutation"
+}
+
+test_setup_managed_block_drift_is_refused() {
+  managed_home="${TMP_ROOT}/managed-home"
+  managed_config="${TMP_ROOT}/managed-config"
+  managed_data="${TMP_ROOT}/managed-data"
+  managed_plan_one="${TMP_ROOT}/managed-plan-one"
+  managed_plan_two="${TMP_ROOT}/managed-plan-two"
+  managed_err="${TMP_ROOT}/managed-err"
+  command mkdir -p "${managed_home}"
+
+  HOME="${managed_home}" \
+    ZDOTDIR="${managed_home}" \
+    XDG_CONFIG_HOME="${managed_config}" \
+    XDG_DATA_HOME="${managed_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${managed_plan_one}" >/dev/null
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${managed_plan_one}" --phase files >/dev/null
+  command sed 's|/setup.zsh|/user-change.zsh|' \
+    "${managed_home}/.zshrc" >"${managed_home}/.zshrc.changed"
+  command mv "${managed_home}/.zshrc.changed" "${managed_home}/.zshrc"
+  managed_before="$(sha256_file "${managed_home}/.zshrc")"
+
+  set +e
+  HOME="${managed_home}" \
+    ZDOTDIR="${managed_home}" \
+    XDG_CONFIG_HOME="${managed_config}" \
+    XDG_DATA_HOME="${managed_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${managed_plan_two}" >/dev/null 2>"${managed_err}"
+  managed_status="$?"
+  set -e
+
+  [ "${managed_status}" -ne 0 ] || fail "setup.sh accepted an externally changed managed block"
+  contains "${managed_err}" 'managed .zshrc block changed outside Zi setup'
+  [ "$(sha256_file "${managed_home}/.zshrc")" = "${managed_before}" ] || fail "managed block refusal changed .zshrc"
+  [ ! -e "${managed_plan_two}" ] || fail "managed block refusal published a plan"
+  pass "managed .zshrc drift requires manual reconciliation"
+}
+
+test_setup_checkout_head_drift_is_refused() {
+  checkout_home="${TMP_ROOT}/checkout-drift-home"
+  checkout_config="${TMP_ROOT}/checkout-drift-config"
+  checkout_data="${TMP_ROOT}/checkout-drift-data"
+  checkout_path="${checkout_data}/zi/bin"
+  checkout_plan="${TMP_ROOT}/checkout-drift-plan"
+  checkout_err="${TMP_ROOT}/checkout-drift-err"
+  checkout_log="${TMP_ROOT}/checkout-drift-log"
+  command mkdir -p "${checkout_home}" "${checkout_path}/.git"
+  printf '%s\n' '# fake zi.zsh' >"${checkout_path}/zi.zsh"
+
+  HOME="${checkout_home}" \
+    XDG_CONFIG_HOME="${checkout_config}" \
+    XDG_DATA_HOME="${checkout_data}" \
+    ZI_SRC_TEST_FAKE_HEAD=1111111111111111111111111111111111111111 \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${checkout_plan}" --skip-zshrc >/dev/null
+  : >"${checkout_log}"
+
+  set +e
+  ZI_SRC_TEST_FAKE_HEAD=2222222222222222222222222222222222222222 \
+    ZI_SRC_TEST_GIT_LOG="${checkout_log}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${checkout_plan}" --phase checkout >/dev/null 2>"${checkout_err}"
+  checkout_status="$?"
+  set -e
+
+  [ "${checkout_status}" -ne 0 ] || fail "setup.sh updated a checkout whose HEAD drifted"
+  contains "${checkout_err}" 'checkout HEAD changed after planning'
+  if grep -E '^(fetch|merge)( |$)' "${checkout_log}" >/dev/null 2>&1; then
+    fail "checkout drift reached a mutating git operation"
   fi
-  pass '.zshrc keeps a literal path for a home that only shares a prefix with $HOME'
+  pass "checkout apply validates the planned HEAD before fetch"
+}
+
+write_legacy_direct_fixture() {
+  legacy_file="$1"
+  legacy_home="$2"
+  legacy_bin="$3"
+  legacy_ref="$4"
+  legacy_profile="$5"
+  command cat >"${legacy_file}" <<EOF
+if [[ ! -f ${legacy_home}/${legacy_bin}/zi.zsh ]]; then
+  print -P "%F{33}▓▒░ %F{160}Installing (%F{33}z-shell/zi%F{160})…%f"
+  command mkdir -p "${legacy_home}" && command chmod go-rwX "${legacy_home}"
+  command git clone -q --filter=blob:none --single-branch --branch "${legacy_ref}" https://github.com/z-shell/zi "${legacy_home}/${legacy_bin}" && \\
+    print -P "%F{33}▓▒░ %F{34}Installation successful.%f%b" || \\
+    print -P "%F{160}▓▒░ The clone has failed.%f%b"
+fi
+source "${legacy_home}/${legacy_bin}/zi.zsh"
+autoload -Uz _zi
+(( \${+_comps} )) && _comps[zi]=_zi
+# examples here -> https://wiki.zshell.dev/ecosystem/category/-annexes
+zicompinit # <- https://wiki.zshell.dev/docs/guides/commands
+EOF
+  case "${legacy_profile}" in
+  annex)
+    command cat >>"${legacy_file}" <<'EOF'
+zi light-mode for \
+  z-shell/z-a-meta-plugins \
+  @annexes # <- https://wiki.zshell.dev/ecosystem/category/-annexes
+# examples here -> https://wiki.zshell.dev/community/gallery/collection
+zicompinit # <- https://wiki.zshell.dev/docs/guides/commands
+EOF
+    ;;
+  zunit)
+    command cat >>"${legacy_file}" <<'EOF'
+zi light-mode for \
+  z-shell/z-a-meta-plugins \
+  @annexes @zunit
+EOF
+    ;;
+  *) fail "unknown legacy profile fixture ${legacy_profile}" ;;
+  esac
+}
+
+test_setup_legacy_profiles_migrate() {
+  for legacy_profile in annex zunit; do
+    legacy_home_dir="${TMP_ROOT}/legacy-${legacy_profile}-home"
+    legacy_config="${TMP_ROOT}/legacy-${legacy_profile}-config"
+    legacy_data="${TMP_ROOT}/legacy-${legacy_profile}-data"
+    legacy_plan="${TMP_ROOT}/legacy-${legacy_profile}-plan"
+    legacy_checkout="${TMP_ROOT}/legacy ${legacy_profile}'s checkout"
+    legacy_bin="custom bin"
+    legacy_ref="feature/legacy-${legacy_profile}"
+    legacy_values="${TMP_ROOT}/legacy-${legacy_profile}-values"
+    command mkdir -p "${legacy_home_dir}"
+    write_legacy_direct_fixture "${legacy_home_dir}/.zshrc" "${legacy_checkout}" "${legacy_bin}" "${legacy_ref}" "${legacy_profile}"
+
+    HOME="${legacy_home_dir}" \
+      ZDOTDIR="${legacy_home_dir}" \
+      XDG_CONFIG_HOME="${legacy_config}" \
+      XDG_DATA_HOME="${legacy_data}" \
+      PATH="${FAKE_BIN}:${PATH}" \
+      sh "${ROOT}/public/sh/setup.sh" plan --plan "${legacy_plan}" >/dev/null
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${legacy_plan}" --phase files >/dev/null
+
+    contains "${legacy_home_dir}/.zshrc" '# >>> zi setup >>>'
+    if grep -F 'command git clone' "${legacy_home_dir}/.zshrc" >/dev/null 2>&1; then
+      fail "legacy ${legacy_profile} direct block remained in .zshrc"
+    fi
+    if grep -F 'z-shell/z-a-meta-plugins' "${legacy_home_dir}/.zshrc" >/dev/null 2>&1; then
+      fail "legacy ${legacy_profile} recipe remained in .zshrc"
+    fi
+    contains "${legacy_config}/zi/setup/shell.zsh" "@${legacy_profile}"
+    contains "${legacy_config}/zi/setup/shell.zsh" "ver'74bd8a8bc3bcff8398420ff5a38758dec5b90e2b'"
+    zsh -f -c '
+      source "$1"
+      print -r -- "home:${ZI[HOME_DIR]}"
+      print -r -- "bin:${ZI[BIN_DIR]}"
+      print -r -- "stream:${ZI[STREAM]}"
+    ' zsh "${legacy_config}/zi/setup/pre.zsh" >"${legacy_values}"
+    contains "${legacy_values}" "home:${legacy_checkout}"
+    contains "${legacy_values}" "bin:${legacy_checkout}/${legacy_bin}"
+    contains "${legacy_values}" "stream:${legacy_ref}"
+  done
+  pass "legacy direct, annex, and zunit profiles migrate without evaluation"
+}
+
+test_setup_legacy_loader_discovers_checkout() {
+  loader_migration_home="${TMP_ROOT}/loader-migration-home"
+  loader_migration_config="${TMP_ROOT}/loader-migration-config"
+  loader_migration_data="${TMP_ROOT}/loader-migration-data"
+  loader_migration_plan="${TMP_ROOT}/loader-migration-plan"
+  loader_migration_err="${TMP_ROOT}/loader-migration-err"
+  command mkdir -p "${loader_migration_home}/.zi/bin/.git"
+  printf '%s\n' '# fake zi.zsh' >"${loader_migration_home}/.zi/bin/zi.zsh"
+  command cat >"${loader_migration_home}/.zshrc" <<'EOF'
+if [[ -n ${XDG_CONFIG_HOME:-} && ${XDG_CONFIG_HOME} == /* ]]; then
+  ZI_LOADER_CONFIG_HOME="${XDG_CONFIG_HOME}/zi"
+else
+  ZI_LOADER_CONFIG_HOME="${HOME}/.config/zi"
+fi
+if [[ -r "${ZI_LOADER_CONFIG_HOME}/init.zsh" ]]; then
+  source "${ZI_LOADER_CONFIG_HOME}/init.zsh" && zzinit
+fi
+unset ZI_LOADER_CONFIG_HOME
+EOF
+
+  HOME="${loader_migration_home}" \
+    ZDOTDIR="${loader_migration_home}" \
+    XDG_CONFIG_HOME="${loader_migration_config}" \
+    XDG_DATA_HOME="${loader_migration_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${loader_migration_plan}" >/dev/null
+  contains "${loader_migration_plan}/plan.meta" "checkout_path=${loader_migration_home}/.zi/bin"
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${loader_migration_plan}" --phase files >/dev/null
+  contains "${loader_migration_home}/.zshrc" '# >>> zi setup >>>'
+  if grep -F 'if [[ -r "${ZI_LOADER_CONFIG_HOME}/init.zsh" ]]' "${loader_migration_home}/.zshrc" >/dev/null 2>&1; then
+    fail "legacy loader block remained after migration"
+  fi
+
+  command mkdir -p "${loader_migration_data}/zi/bin/.git"
+  printf '%s\n' '# second fake zi.zsh' >"${loader_migration_data}/zi/bin/zi.zsh"
+  set +e
+  HOME="${loader_migration_home}" \
+    ZDOTDIR="${loader_migration_home}" \
+    XDG_CONFIG_HOME="${loader_migration_config}" \
+    XDG_DATA_HOME="${loader_migration_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${TMP_ROOT}/loader-migration-conflict-plan" >/dev/null 2>"${loader_migration_err}"
+  loader_migration_status="$?"
+  set -e
+
+  [ "${loader_migration_status}" -ne 0 ] || fail "setup.sh chose between ambiguous loader checkouts"
+  contains "${loader_migration_err}" 'both legacy and XDG Zi homes exist'
+  pass "legacy loader migration discovers one checkout and refuses conflicts"
 }
 
 test_sync_init() {
@@ -923,14 +1284,15 @@ test_loader_default_paths_remain_dynamic() {
     sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null
 
   if grep -F 'ZI[HOME_DIR]=' "${home}/.zshrc" >/dev/null 2>&1; then
-    fail "default loader install pinned a dynamically resolved home"
+    fail "managed .zshrc embedded a checkout path"
   fi
-  pass "default loader paths remain dynamically resolved"
+  contains "${config}/zi/setup/pre.zsh" "ZI[HOME_DIR]='${data}/zi'"
+  pass "default loader path is isolated in the generated pre fragment"
 }
 
 test_loader_carries_explicit_paths() {
   home="${TMP_ROOT}/loader-explicit-home"
-  config="${TMP_ROOT}/loader-explicit-config"
+  config="${TMP_ROOT}/loader explicit config's root"
   data="${TMP_ROOT}/loader-explicit-data"
   explicit="${TMP_ROOT}/loader explicit's root"
   bin_name="custom \$(touch pwned) ' bin"
@@ -949,12 +1311,12 @@ test_loader_carries_explicit_paths() {
     sh "${ROOT}/public/sh/install.sh" -a loader >/dev/null
 
   [ -f "${explicit}/${bin_name}/zi.zsh" ] || fail "loader install did not use the explicit checkout path"
-  contains "${home}/.zshrc" 'typeset -gA ZI'
+  contains "${config}/zi/setup.zsh" 'typeset -gA ZI'
 
   (
     cd "${runtime_work}" || exit 1
     HOME="${home}" \
-      XDG_CONFIG_HOME="${config}" \
+      XDG_CONFIG_HOME="${TMP_ROOT}/unrelated-runtime-config" \
       XDG_DATA_HOME="${data}" \
       zsh -f -c '
         source "$1"
@@ -967,6 +1329,7 @@ test_loader_carries_explicit_paths() {
   contains "${values_log}" "home:${explicit}"
   contains "${values_log}" "bin:${explicit}/${bin_name}"
   contains "${values_log}" 'layout:explicit'
+  contains "${home}/.zshrc" "source '${TMP_ROOT}/loader explicit config'\\''s root/zi/setup.zsh'"
   [ ! -e "${runtime_work}/pwned" ] || fail "explicit loader path executed generated Zsh"
   [ ! -e "${data}/zi/bin/zi.zsh" ] || fail "loader startup cloned a second checkout"
   pass "loader carries explicit home and bin paths into startup safely"
@@ -1099,6 +1462,7 @@ test_init_uses_private_tempdir
 test_init_path_resolution
 write_fake_tools
 test_loader_install
+test_curl_pipe_install
 test_loader_default_paths_remain_dynamic
 test_loader_carries_explicit_paths
 test_loader_carries_explicit_bin_name
@@ -1118,6 +1482,13 @@ test_zshrc_comment_does_not_suppress_integration
 test_annex_rerun_is_idempotent
 test_skip_leaves_annex_out
 test_branch_option_rejects_refspec
-test_zshrc_text_uses_home_variable
+test_zshrc_uses_short_entrypoint
+test_setup_plan_tamper_is_rejected
+test_setup_target_drift_is_transactional
+test_setup_symlinked_zshrc_is_refused
+test_setup_managed_block_drift_is_refused
+test_setup_checkout_head_drift_is_refused
+test_setup_legacy_profiles_migrate
+test_setup_legacy_loader_discovers_checkout
 test_sync_init
 test_success_line_reports_exact_path
