@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "contract_version": 1,
+  "evidence_reviewed": "2026-09-20",
+  "renames": [],
+  "surfaces": [
+    {
+      "id": "cli-profile-behavior",
+      "description": "CLI flags, options, environment overrides, and profile selection for install.sh and setup.sh",
+      "paths": [
+        "public/sh/install.sh",
+        "public/sh/setup.sh",
+        "public/setup/profiles.tsv"
+      ]
+    },
+    {
+      "id": "output-status-messages",
+      "description": "Installer progress messages, status banners, error diagnostics, and refusal notices",
+      "paths": ["public/sh/install.sh", "public/sh/setup.sh"]
+    },
+    {
+      "id": "zshrc-setup-entrypoint",
+      "description": "Marker-delimited short .zshrc block and setup.zsh entrypoint script",
+      "paths": ["public/sh/setup.sh"]
+    },
+    {
+      "id": "companion-asset-checksum",
+      "description": "Standalone install.sh companion-asset retrieval and SHA256 checksum verification contract",
+      "paths": ["public/sh/install.sh", "public/checksum.txt"]
+    },
+    {
+      "id": "plan-apply-receipts",
+      "description": "Two-phase plan and apply execution lifecycle and serialized plan/receipt formats",
+      "paths": ["public/sh/setup.sh"]
+    },
+    {
+      "id": "configuration-targets",
+      "description": "Managed configuration targets installed during files phase (init, pre, shell, entry, zshrc)",
+      "paths": ["public/sh/setup.sh"]
+    }
+  ],
+  "consumers": [
+    {
+      "repository": "z-shell/wiki",
+      "path": "docs/getting_started/01_installation.mdx",
+      "scope": "external",
+      "evidence_status": "published",
+      "evidence": "https://github.com/z-shell/wiki/blob/2270e295dfa7a87f773009c374f76de61aa54e24/docs/getting_started/01_installation.mdx",
+      "surfaces": [
+        "cli-profile-behavior",
+        "output-status-messages",
+        "zshrc-setup-entrypoint",
+        "companion-asset-checksum",
+        "configuration-targets"
+      ]
+    },
+    {
+      "repository": "z-shell/.github",
+      "path": ".github/skills/zi-install/SKILL.md",
+      "scope": "external",
+      "evidence_status": "published",
+      "evidence": "https://github.com/z-shell/.github/blob/c26699d42c1bb9152fc2a4f92d1872fec2430166/.github/skills/zi-install/SKILL.md",
+      "surfaces": [
+        "cli-profile-behavior",
+        "output-status-messages",
+        "zshrc-setup-entrypoint",
+        "companion-asset-checksum",
+        "plan-apply-receipts",
+        "configuration-targets"
+      ]
+    },
+    {
+      "repository": "z-shell/src",
+      "path": ".github/skills/zi-install/SKILL.md",
+      "scope": "internal",
+      "evidence_status": "internal",
+      "evidence": null,
+      "surfaces": [
+        "cli-profile-behavior",
+        "output-status-messages",
+        "zshrc-setup-entrypoint",
+        "companion-asset-checksum",
+        "plan-apply-receipts",
+        "configuration-targets"
+      ]
+    },
+    {
+      "repository": "z-shell/src",
+      "path": "docs/README.md",
+      "scope": "internal",
+      "evidence_status": "internal",
+      "evidence": null,
+      "surfaces": [
+        "cli-profile-behavior",
+        "output-status-messages",
+        "zshrc-setup-entrypoint",
+        "companion-asset-checksum",
+        "plan-apply-receipts",
+        "configuration-targets"
+      ]
+    },
+    {
+      "repository": "z-shell/src",
+      "path": "public/index.html",
+      "scope": "internal",
+      "evidence_status": "internal",
+      "evidence": null,
+      "surfaces": ["cli-profile-behavior", "companion-asset-checksum"]
+    },
+    {
+      "repository": "z-shell/zi",
+      "path": "README.md",
+      "scope": "external",
+      "evidence_status": "pending",
+      "evidence": "https://github.com/z-shell/zi/blob/3e331cf715474b9066f1ff835b01e67035a38c15/README.md",
+      "surfaces": ["cli-profile-behavior", "companion-asset-checksum"]
+    }
+  ]
+}

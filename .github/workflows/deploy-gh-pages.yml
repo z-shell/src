@@ -11,7 +11,7 @@ on:
       - ".github/workflows/deploy-gh-pages.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +20,8 @@ concurrency:
 jobs:
   deploy:
     if: github.repository == 'z-shell/src'
+    permissions:
+      contents: write
     environment:
       name: github-pages
     runs-on: ubuntu-latest
@@ -44,8 +46,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG_NAME="${GITHUB_REF##refs/tags/}"
-          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "deploy_tag_name=deploy-${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "deploy_tag_name=deploy-${TAG_NAME}" >> "$GITHUB_OUTPUT"
       - name: 🚀 Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:
