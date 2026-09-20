@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Z-Shell / src — CDN Assets</title>
+    <title>Z-Shell / src - CDN Assets</title>
     <style>
       :root {
         --bg: #0d1117;
@@ -156,6 +156,11 @@
       .asset-name {
         font-weight: bold;
         color: var(--primary);
+        text-decoration: none;
+      }
+
+      .asset-name:hover {
+        text-decoration: underline;
       }
 
       .asset-url {
@@ -252,8 +257,14 @@
             </li>
             <li class="asset-item">
               <div class="asset-info">
-                <span class="asset-name">Zi Installer</span>
-                <span class="asset-url">get.zshell.dev</span>
+                <a
+                  class="asset-name"
+                  href="https://wiki.zshell.dev/docs/getting_started/installation"
+                  >Zi Installer</a
+                >
+                <span class="asset-url"
+                  >get.zshell.dev · verified setup assets</span
+                >
               </div>
               <button
                 class="btn-copy"

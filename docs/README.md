@@ -1,164 +1,94 @@
 <!-- markdownlint-disable MD041 -->
-<table style="background-color:transparent;">
-  <tr>
-    <td>
-      <h1 align="center">
-        <a target="_self" href="https://github.com/z-shell/zi">
-          <img style="width: 60px; height: 60px"
-            src="https://raw.githubusercontent.com/z-shell/zi/main/docs/images/logo.svg" alt="❮ Zi ❯ Logo" />
-        </a>❮ <strong>Src</strong> ❯
-      </h1>
-      <h2 align="center">
-        ✨ Z-Shell source library — snippets, installer scripts and shared utilities
-      </h2>
-      <div align="center">
-        <a href="https://github.com/orgs/z-shell/discussions/"><strong>《 Ask a Question 》</strong></a>
-        ·
-        <a href="https://wiki.zshell.dev/search"><strong>《💡》Search Wiki </strong></a>
-        ·
-        <a
-          href="https://github.com/z-shell/community/issues/new?assignees=&labels=%F0%9F%91%A5+member&template=membership.yml&title=team%3A+"><strong>《💜》Join
-          </strong></a>
-        ·
-        <a href="https://translate.zshell.dev/"><strong>《🌐》Localize </strong></a>
-      </div>
-  </tr>
-  </td>
-  <tr>
-    <td>
-      <div align="center">
-        <a title="Crowdin" target="_self" href="https://translate.zshell.dev/">
-          <img align="center" src="https://badges.crowdin.net/e/f108c12713ee8526ac878d5671ad6e29/localized.svg" alt="Crowdin Status" />
-        </a>
-        <a title="License" target="_self" href="https://www.gnu.org/licenses/gpl-3.0/">
-          <img align="center" src="https://img.shields.io/badge/License-GPL%20v3-blue.svg" alt="Project License" />
-        </a>
-        <a title="VIM" target="_self" href="https://github.com/z-shell/zi-vim-syntax/">
-          <img align="center" src="https://img.shields.io/badge/--019733?logo=vim" alt="VIM" />
-        </a>
-        <a target="_self" href="https://open.vscode.dev/z-shell/src/">
-          <img align="center" src="https://img.shields.io/badge/--007ACC?logo=visual%20studio%20code&logoColor=ffffff"
-            alt="Visual Studio Code" />
-        </a>
-      </div>
-  </tr>
-  </td>
-</table>
-<hr />
+<div align="center">
+  <a href="https://github.com/z-shell/zi">
+    <img src="https://raw.githubusercontent.com/z-shell/.github/main/profile/img/logo.png" width="72" height="72" alt="Z-Shell logo">
+  </a>
 
-### Content
+# Z-Shell source delivery
 
-- **Wiki Pages**: [wiki.zshell.dev](https://wiki.zshell.dev)
-- **Loader**: [init.zshell.dev](https://init.zshell.dev)
-- **Installer**: [get.zshell.dev](https://get.zshell.dev)
-- **jsDeliver CDN**: [cdn.jsdelivr.net/gh/z-shell/src@main/](https://cdn.jsdelivr.net/gh/z-shell/src@main/)
+Installer, loader, setup planner, and CDN assets for [Zi](https://github.com/z-shell/zi).
 
-### Guided setup
+[![Linux CI](https://img.shields.io/github/actions/workflow/status/z-shell/src/check-linux.yml?branch=main&label=linux&style=flat-square)](https://github.com/z-shell/src/actions/workflows/check-linux.yml)
+[![macOS CI](https://img.shields.io/github/actions/workflow/status/z-shell/src/check-macos.yml?branch=main&label=macOS&style=flat-square)](https://github.com/z-shell/src/actions/workflows/check-macos.yml)
+[![License](https://img.shields.io/github/license/z-shell/src?style=flat-square)](https://github.com/z-shell/src/blob/main/LICENSE)
 
-`public/sh/install.sh` now delegates installation to the POSIX `sh` setup planner. The default `loader` profile writes a reviewable plan, applies the Zi checkout as one phase, and applies loader configuration as a separate phase. The `annex` and `zunit` profiles add pinned recipes that run on the first shell start.
+</div>
 
-The source-adjacent [Zi Setup TUI contract](zi-setup-tui-contract.md) defines the proposed machine interface and acceptance boundary for a future guided terminal client. The client offers `loader` and `annex`; `zunit` remains compatibility-only for existing installer output.
-
-For a normal installation, run:
+## Install Zi
 
 ```sh
-sh -c "$(curl -fsSL https://get.zshell.dev)"
+sh -c "$(curl -fsSL https://get.zshell.dev)" --
 ```
 
-The downloaded `install.sh` remains the only entry point; it retrieves and
-verifies its planner assets automatically. To install an exact source revision,
-use the same tag, branch, or commit for the script and `ZI_SRC_REF`:
-
-```sh
-ref=v1.2.3
-curl -fsSL "https://raw.githubusercontent.com/z-shell/src/${ref}/public/sh/install.sh" |
-  ZI_SRC_REF="${ref}" sh
-```
-
-To inspect and apply a plan manually:
-
-```sh
-sh public/sh/setup.sh plan --plan /tmp/zi-setup-plan --profile loader
-plan_sha="$(cat /tmp/zi-setup-plan/plan.id)"
-sh public/sh/setup.sh apply --plan /tmp/zi-setup-plan --phase checkout --expect "${plan_sha}"
-sh public/sh/setup.sh apply --plan /tmp/zi-setup-plan --phase files --expect "${plan_sha}"
-```
-
-The files phase manages `init.zsh`, `setup.zsh`, `setup/pre.zsh`, `setup/shell.zsh`, and a marked `.zshrc` block. The user-facing block stays intentionally short:
+The default profile installs Zi and adds one short managed entry to the user's
+Zsh startup file:
 
 ```zsh
 # >>> zi setup >>>
-source '/home/you/.config/zi/setup.zsh'
+source '/absolute/config/zi/setup.zsh'
 # <<< zi setup <<<
 ```
 
-The generated `setup.zsh` entrypoint owns the startup sequence and diagnostics. The files phase validates every recorded target before writing any target. A symlinked `.zshrc`, an externally changed managed block, an unrecognized Zi startup block, or checkout drift is refused with remediation output instead of being overwritten.
+> [!IMPORTANT]
+> The generated `setup.zsh` owns startup sequencing, settings, and diagnostics.
+> Read the [installation guide](https://wiki.zshell.dev/docs/getting_started/installation)
+> before selecting another profile, branch, or install location.
 
-### Loader configuration
+## Published assets
 
-`public/zsh/init.zsh` defines `zzinit()`. Sourcing the file only declares the
-function and applies defaults; nothing is cloned, sourced, or written until
-`zzinit` is called.
+| Endpoint                                                                               | Content                                          |
+| :------------------------------------------------------------------------------------- | :----------------------------------------------- |
+| [get.zshell.dev](https://get.zshell.dev)                                               | Standalone installer entrypoint                  |
+| [init.zshell.dev](https://init.zshell.dev)                                             | Zi loader                                        |
+| [src.zshell.dev](https://src.zshell.dev)                                               | Published source assets                          |
+| [checksum.txt](https://raw.githubusercontent.com/z-shell/src/main/public/checksum.txt) | SHA-256 checksums for published installer assets |
 
-The loader owns only the settings that must exist before Zi does:
+`install.sh` remains the user-facing entrypoint. It downloads its companion
+setup assets from the same source revision, verifies their checksums, creates a
+reviewable plan, and applies the checkout and configuration as separate phases.
+The `loader`, `annex`, and `zunit` profiles all use that planner. The `-i skip`
+profile installs Zi without changing `.zshrc`.
 
-| Setting             | Default                                   | Purpose                  |
-| ------------------- | ----------------------------------------- | ------------------------ |
-| `ZI[REPOSITORY]`    | `https://github.com/z-shell/zi.git`       | Clone source             |
-| `ZI[STREAM]`        | `main`                                    | Branch or tag to clone   |
-| `ZI[HOME_DIR]`      | Legacy home, otherwise XDG data `zi` root | Working-directory root   |
-| `ZI[BIN_DIR]`       | `${ZI[HOME_DIR]}/bin`                     | Where `zi.zsh` is cloned |
-| `ZI[MUTE_WARNINGS]` | `0`                                       | Loader warning control   |
+The source-adjacent [Zi Setup TUI contract](zi-setup-tui-contract.md) defines
+the machine interface and acceptance boundary for a future guided terminal
+client. The client offers `loader` and `annex`; `zunit` remains
+compatibility-only for existing installer output.
 
-The loader mirrors Zi core's home-resolution contract because it must find or
-clone `zi.zsh` before core can run. An explicit `ZI[HOME_DIR]` wins. A
-recognized legacy `$HOME/.zi` installation stays active. Otherwise the loader
-uses `${XDG_DATA_HOME}/zi` when `XDG_DATA_HOME` is absolute, or
-`$HOME/.local/share/zi` when it is unset, empty, or relative. When both homes
-contain Zi data, an explicit or unique existing `BIN_DIR` identity selects the
-matching home; otherwise the conservative fallback is the legacy home. No
-automatic move or merge occurs.
+## Repository layout
 
-`ZI[CACHE_DIR]`, `ZI[CONFIG_DIR]`, and every other Zi path are owned and
-derived by `zi.zsh`. Set one in `.zshrc` before sourcing the loader to override
-it; do not add a duplicate default to the loader. See the
-[customization guide](https://wiki.zshell.dev/docs/guides/customization#customizing-paths).
+| Path                  | Purpose                                                                  |
+| :-------------------- | :----------------------------------------------------------------------- |
+| `public/sh/`          | POSIX shell installers, planner, checksum, and synchronization utilities |
+| `public/setup/`       | Versioned profile data consumed by the planner                           |
+| `public/zsh/`         | Zsh loader and reusable snippets                                         |
+| `public/index.html`   | Landing page deployed with the public assets                             |
+| `tests/installers.sh` | Cross-platform installer and loader behavior tests                       |
 
-One loader-only toggle exists:
-
-| Setting              | Default | Purpose                                                    |
-| -------------------- | ------- | ---------------------------------------------------------- |
-| `ZI[LOADER_HISTORY]` | `1`     | Set to `0` to leave `HISTFILE`/`SAVEHIST`/`HISTSIZE` alone |
-
-### Maintainer — Verify and Sync Loader
-
-Check whether the local `public/zsh/init.zsh` matches the canonical GitHub raw `main` copy:
+## Verify locally
 
 ```sh
-sh public/sh/sync-init.sh
+sh tests/installers.sh
+sh -n public/sh/*.sh
+shellcheck public/sh/*.sh
 ```
 
-Replace the local file if it drifts:
+Regenerate checksums after changing a published asset:
 
 ```sh
-sh public/sh/sync-init.sh --write
+sh public/sh/generate-checksums.sh
+git diff --exit-code -- public/checksum.txt
 ```
 
-Run against local fixtures (no network required, useful in tests):
+GitHub Actions exercises the installer and loader on Linux, macOS, and Cygwin.
+Merges to `main` publish `public/` through GitHub Pages, and the loader-drift
+workflow verifies that the deployed loader matches its source and checksum.
 
-```sh
-sh public/sh/sync-init.sh \
-  --local  /tmp/my-init.zsh \
-  --remote /tmp/remote-init.zsh \
-  --checksum-url /tmp/checksum.txt
-```
+## Documentation and support
 
-Skip checksum validation:
-
-```sh
-sh public/sh/sync-init.sh --no-checksum
-```
-
----
-
-> This repository is compatible with [Zi](https://github.com/z-shell/zi)
+- [Z-Shell Wiki](https://wiki.zshell.dev/)
+- [Zi installation guide](https://wiki.zshell.dev/docs/getting_started/installation)
+- [Zi plugin manager](https://github.com/z-shell/zi)
+- [Zsh Plugin Standard v2](https://wiki.zshell.dev/community/zsh_plugin_standard)
+- [Zsh manual: startup and shutdown files](https://zsh.sourceforge.io/Doc/Release/Files.html)
+- [Issue tracker](https://github.com/z-shell/src/issues)
+- [Organization discussions](https://github.com/orgs/z-shell/discussions)

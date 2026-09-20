@@ -1,0 +1,118 @@
+---
+name: Installer Contract Impact
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: installer-contract-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract-impact:
+    name: Installer contract impact
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -yq jq zsh
+
+      - name: Prepare trusted detector
+        id: detector
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          trusted_root="$RUNNER_TEMP/trusted-contract"
+          mkdir -p "$trusted_root"
+          if git cat-file -e "${BASE_SHA}:scripts/installer-contract-impact.zsh" 2>/dev/null; then
+            git archive "$BASE_SHA" \
+              contracts/installer-contract-v1.json \
+              .github/skills/zi-install/SKILL.md \
+              docs/README.md \
+              public/checksum.txt \
+              public/index.html \
+              public/setup/profiles.tsv \
+              public/sh/install.sh \
+              public/sh/setup.sh \
+              scripts/installer-contract-evidence.zsh \
+              scripts/installer-contract-impact.zsh \
+              tests/installer-contract-impact.zsh |
+              tar -x -C "$trusted_root"
+            echo "policy_arg=" >> "$GITHUB_OUTPUT"
+            echo "has_trusted_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            mkdir -p "$trusted_root/scripts"
+            cp scripts/installer-contract-impact.zsh "$trusted_root/scripts/installer-contract-impact.zsh"
+            echo "policy_arg=--no-policy" >> "$GITHUB_OUTPUT"
+            echo "has_trusted_tests=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Installer contract bootstrap::The base branch has no trusted detector; this introducing run is informational-only."
+          fi
+          echo "root=$trusted_root" >> "$GITHUB_OUTPUT"
+
+      - name: Compare installer contract
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          POLICY_ARG: ${{ steps.detector.outputs.policy_arg }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          TRUSTED_ROOT: ${{ steps.detector.outputs.root }}
+        run: zsh "$TRUSTED_ROOT/scripts/installer-contract-impact.zsh" --base "$BASE_SHA" --head "$HEAD_SHA" ${POLICY_ARG:+"$POLICY_ARG"}
+
+      - name: Test trusted installer contract detector
+        if: steps.detector.outputs.has_trusted_tests == 'true'
+        env:
+          TRUSTED_ROOT: ${{ steps.detector.outputs.root }}
+        run: cd "$TRUSTED_ROOT" && zsh tests/installer-contract-impact.zsh
+
+  detector-head-tests:
+    name: Installer contract detector tests
+    if: github.event_name == 'pull_request'
+    needs: contract-impact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -yq jq zsh
+
+      - name: Test pull request detector
+        run: zsh tests/installer-contract-impact.zsh
+
+  consumer-evidence:
+    name: Installer consumer evidence
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -yq jq zsh
+
+      - name: Audit published consumer evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zsh scripts/installer-contract-evidence.zsh
