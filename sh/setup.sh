@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 # -*- mode: sh; sh-indentation: 2; indent-tabs-mode: nil; sh-basic-offset: 2; -*-
 # vim: ft=sh sw=2 ts=2 et
+# The portable engine uses command predicates, captured probes, and exhaustive
+# validated cases whose optional ShellCheck findings are tracked by tests.
+# shellcheck disable=SC2249,SC2310,SC2312
 
 set -eu
 
@@ -14,19 +17,40 @@ ROOT="$(
   cd "${SCRIPT_DIR}/../.." 2>/dev/null && pwd
 )" || exit 1
 
+DIE_STATUS=1
+RESULT_ACTIVE=0
+RESULT_PUBLISHED=0
+RESULT_WORK=""
+RESULT_DIR=""
+RESULT_OPERATION=""
+RESULT_ERROR_CODE="operation-failed"
+RESULT_DETAIL="operation failed"
+ACTIVE_LOCK=""
+
 die() {
-  printf '%s\n' "${PROGRAM}: $*" >&2
-  exit 1
+  _die_detail="$*"
+  printf '%s\n' "${PROGRAM}: ${_die_detail}" >&2
+  RESULT_DETAIL="${_die_detail}"
+  if [ "${RESULT_ACTIVE}" -eq 1 ] && [ "${RESULT_PUBLISHED}" -eq 0 ]; then
+    set +e
+    result_publish failed "${RESULT_ERROR_CODE}" "${RESULT_OPERATION}" "${RESULT_DETAIL}"
+    set -e
+  fi
+  exit "${DIE_STATUS}"
 }
 
 usage() {
   command cat <<'EOF'
 Usage:
+  setup.sh describe --output DIR [--zi-home DIR] [--zi-bin-dir NAME]
+                    [--config-home DIR] [--zshrc FILE] [--profiles FILE]
+                    [--skip-zshrc]
   setup.sh plan --plan DIR [--profile loader|annex|zunit] [--ref REF]
                 [--zi-home DIR] [--zi-bin-dir NAME] [--config-home DIR]
                 [--zshrc FILE] [--init FILE] [--profiles FILE]
                 [--checksum FILE] [--skip-zshrc]
   setup.sh apply --plan DIR --phase checkout|files [--expect SHA256]
+                 [--result DIR]
 EOF
 }
 
@@ -47,11 +71,72 @@ is_absolute_path() {
   esac
 }
 
+path_exists() {
+  [ -e "$1" ] || [ -L "$1" ]
+}
+
 validate_text_path() {
   case "$2" in
   *"
 "* | *"	"*) die "$1 must not contain a newline or tab" ;;
   esac
+}
+
+write_field() {
+  _field_root="$1"
+  _field_path="$2"
+  _field_value="$3"
+  command mkdir -p "${_field_root}/$(dirname "${_field_path}")"
+  printf '%s\n' "${_field_value}" >"${_field_root}/${_field_path}"
+}
+
+add_fact() {
+  _fact_root="$1"
+  _fact_id="$2"
+  _fact_value="$3"
+  _fact_source="$4"
+  _fact_confidence="$5"
+  printf '%s\n' "${_fact_id}" >>"${_fact_root}/facts/order"
+  write_field "${_fact_root}" "facts/${_fact_id}/value" "${_fact_value}"
+  write_field "${_fact_root}" "facts/${_fact_id}/source" "${_fact_source}"
+  write_field "${_fact_root}" "facts/${_fact_id}/confidence" "${_fact_confidence}"
+}
+
+add_profile() {
+  _profile_root="$1"
+  _profile_id="$2"
+  _profile_selectable="$3"
+  _profile_reason="$4"
+  _profile_title="$5"
+  printf '%s\n' "${_profile_id}" >>"${_profile_root}/profiles/order"
+  write_field "${_profile_root}" "profiles/${_profile_id}/selectable" "${_profile_selectable}"
+  write_field "${_profile_root}" "profiles/${_profile_id}/reason" "${_profile_reason}"
+  write_field "${_profile_root}" "profiles/${_profile_id}/title" "${_profile_title}"
+}
+
+add_operation() {
+  _operation_root="$1"
+  _operation_id="$2"
+  _operation_phase="$3"
+  _operation_kind="$4"
+  _operation_summary="$5"
+  printf '%s\n' "${_operation_id}" >>"${_operation_root}/operations/order"
+  write_field "${_operation_root}" "operations/${_operation_id}/phase" "${_operation_phase}"
+  write_field "${_operation_root}" "operations/${_operation_id}/kind" "${_operation_kind}"
+  write_field "${_operation_root}" "operations/${_operation_id}/summary" "${_operation_summary}"
+  write_field "${_operation_root}" "operations/${_operation_id}/interruptible" no
+}
+
+add_warning() {
+  _warning_root="$1"
+  _warning_id="$2"
+  _warning_severity="$3"
+  _warning_summary="$4"
+  _warning_remediation="$5"
+  printf '%s\n' "${_warning_id}" >>"${_warning_root}/warnings/order"
+  write_field "${_warning_root}" "warnings/${_warning_id}/severity" "${_warning_severity}"
+  write_field "${_warning_root}" "warnings/${_warning_id}/summary" "${_warning_summary}"
+  write_field "${_warning_root}" "warnings/${_warning_id}/remediation" "${_warning_remediation}"
 }
 
 validate_ref() {
@@ -450,7 +535,210 @@ EOF
   } >"${_shell_output}"
 }
 
+# Discovery deliberately uses command predicates and captured read-only probes;
+# each failure is classified and handled by the surrounding branch.
+describe_command() {
+  DIE_STATUS=2
+  DESCRIBE_OUTPUT=""
+  DESCRIBE_ZI_HOME="${ZI_HOME-}"
+  DESCRIBE_BIN="${ZI_BIN_DIR_NAME:-bin}"
+  DESCRIBE_CONFIG_HOME=""
+  DESCRIBE_ZSHRC=""
+  DESCRIBE_PROFILES="${ROOT}/public/setup/profiles.tsv"
+  DESCRIBE_SKIP_ZSHRC=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+    --output)
+      [ "$#" -ge 2 ] || die '--output requires a directory'
+      DESCRIBE_OUTPUT="$2"
+      shift 2
+      ;;
+    --zi-home)
+      [ "$#" -ge 2 ] || die '--zi-home requires a directory'
+      DESCRIBE_ZI_HOME="$2"
+      shift 2
+      ;;
+    --zi-bin-dir)
+      [ "$#" -ge 2 ] || die '--zi-bin-dir requires a name'
+      DESCRIBE_BIN="$2"
+      shift 2
+      ;;
+    --config-home)
+      [ "$#" -ge 2 ] || die '--config-home requires a directory'
+      DESCRIBE_CONFIG_HOME="$2"
+      shift 2
+      ;;
+    --zshrc)
+      [ "$#" -ge 2 ] || die '--zshrc requires a file'
+      DESCRIBE_ZSHRC="$2"
+      shift 2
+      ;;
+    --profiles)
+      [ "$#" -ge 2 ] || die '--profiles requires a file'
+      DESCRIBE_PROFILES="$2"
+      shift 2
+      ;;
+    --skip-zshrc)
+      DESCRIBE_SKIP_ZSHRC=1
+      shift
+      ;;
+    --help | -h)
+      usage
+      exit 0
+      ;;
+    *) die "unknown describe option $1" ;;
+    esac
+  done
+
+  [ -n "${DESCRIBE_OUTPUT}" ] || die '--output is required'
+  if path_exists "${DESCRIBE_OUTPUT}"; then
+    die "describe output path already exists: ${DESCRIBE_OUTPUT}"
+  fi
+  case "${DESCRIBE_BIN}" in "" | . | .. | */*) die '--zi-bin-dir must be one directory name' ;; esac
+  validate_text_path '--output' "${DESCRIBE_OUTPUT}"
+  validate_text_path '--zi-bin-dir' "${DESCRIBE_BIN}"
+  if [ -z "${DESCRIBE_CONFIG_HOME}" ]; then
+    if is_absolute_path "${XDG_CONFIG_HOME-}"; then
+      DESCRIBE_CONFIG_HOME="${XDG_CONFIG_HOME}/zi"
+    else
+      DESCRIBE_CONFIG_HOME="${HOME}/.config/zi"
+    fi
+  fi
+  is_absolute_path "${DESCRIBE_CONFIG_HOME}" || die '--config-home must be absolute'
+  if [ -z "${DESCRIBE_ZSHRC}" ]; then
+    DESCRIBE_ZDOTDIR="${ZDOTDIR:-${HOME}}"
+    is_absolute_path "${DESCRIBE_ZDOTDIR}" || die 'ZDOTDIR must be absolute when set'
+    DESCRIBE_ZSHRC="${DESCRIBE_ZDOTDIR}/.zshrc"
+  fi
+  is_absolute_path "${DESCRIBE_ZSHRC}" || die '--zshrc must be absolute'
+  if [ -n "${DESCRIBE_ZI_HOME}" ]; then
+    is_absolute_path "${DESCRIBE_ZI_HOME}" || die '--zi-home must be absolute'
+  fi
+  validate_text_path '--config-home' "${DESCRIBE_CONFIG_HOME}"
+  validate_text_path '--zshrc' "${DESCRIBE_ZSHRC}"
+  validate_text_path '--zi-home' "${DESCRIBE_ZI_HOME}"
+
+  DESCRIBE_PARENT="$(dirname "${DESCRIBE_OUTPUT}")"
+  [ -d "${DESCRIBE_PARENT}" ] || die "describe output parent does not exist: ${DESCRIBE_PARENT}"
+  [ -w "${DESCRIBE_PARENT}" ] || die "describe output parent is not writable: ${DESCRIBE_PARENT}"
+  [ -r "${DESCRIBE_PROFILES}" ] || {
+    DIE_STATUS=3
+    die "cannot read profile table ${DESCRIBE_PROFILES}"
+  }
+
+  DIE_STATUS=3
+  DESCRIBE_WORK="$(mktemp -d "${DESCRIBE_PARENT}/.zi-setup-describe.XXXXXX")" ||
+    die "cannot stage describe artifact in ${DESCRIBE_PARENT}"
+  trap 'rm -rf "${DESCRIBE_WORK:?}"' EXIT INT TERM
+  command mkdir -p "${DESCRIBE_WORK}/facts" "${DESCRIBE_WORK}/profiles"
+  : >"${DESCRIBE_WORK}/facts/order"
+  : >"${DESCRIBE_WORK}/profiles/order"
+  printf '%s\n' zi-setup-describe-v1 >"${DESCRIBE_WORK}/format"
+
+  DESCRIBE_HOME_STATE=selected
+  if [ -z "${DESCRIBE_ZI_HOME}" ]; then
+    if is_absolute_path "${XDG_DATA_HOME-}"; then
+      DESCRIBE_DATA_HOME="${XDG_DATA_HOME}"
+    else
+      DESCRIBE_DATA_HOME="${HOME}/.local/share"
+    fi
+    DESCRIBE_LEGACY_HOME="${HOME}/.zi"
+    DESCRIBE_XDG_HOME="${DESCRIBE_DATA_HOME}/zi"
+    DESCRIBE_LEGACY_PRESENT=0
+    DESCRIBE_XDG_PRESENT=0
+    zi_home_has_installation "${DESCRIBE_LEGACY_HOME}" && DESCRIBE_LEGACY_PRESENT=1
+    zi_home_has_installation "${DESCRIBE_XDG_HOME}" && DESCRIBE_XDG_PRESENT=1
+    if [ "${DESCRIBE_LEGACY_PRESENT}" -eq 1 ] && [ "${DESCRIBE_XDG_PRESENT}" -eq 1 ]; then
+      if [ -f "${DESCRIBE_XDG_HOME}/bin/zi.zsh" ] && [ ! -f "${DESCRIBE_LEGACY_HOME}/bin/zi.zsh" ]; then
+        DESCRIBE_ZI_HOME="${DESCRIBE_XDG_HOME}"
+      else
+        DESCRIBE_HOME_STATE=ambiguous
+        DESCRIBE_ZI_HOME=unknown
+      fi
+    elif [ "${DESCRIBE_LEGACY_PRESENT}" -eq 1 ]; then
+      DESCRIBE_ZI_HOME="${DESCRIBE_LEGACY_HOME}"
+    else
+      DESCRIBE_ZI_HOME="${DESCRIBE_XDG_HOME}"
+    fi
+  fi
+  if [ "${DESCRIBE_HOME_STATE}" = selected ]; then
+    DESCRIBE_CHECKOUT="${DESCRIBE_ZI_HOME}/${DESCRIBE_BIN}"
+  else
+    DESCRIBE_CHECKOUT="unknown"
+  fi
+
+  if command -v git >/dev/null 2>&1; then DESCRIBE_GIT="available"; else DESCRIBE_GIT="missing"; fi
+  if command -v zsh >/dev/null 2>&1; then DESCRIBE_ZSH="available"; else DESCRIBE_ZSH="missing"; fi
+  if [ -t 0 ] && [ -t 1 ]; then DESCRIBE_TTY="yes"; else DESCRIBE_TTY="no"; fi
+  if [ "${DESCRIBE_SKIP_ZSHRC}" -eq 1 ]; then
+    DESCRIBE_ZSHRC_STATE="skipped"
+  elif [ -L "${DESCRIBE_ZSHRC}" ]; then
+    DESCRIBE_ZSHRC_STATE="symlink"
+  elif [ -f "${DESCRIBE_ZSHRC}" ]; then
+    DESCRIBE_ZSHRC_STATE="file"
+  elif [ -e "${DESCRIBE_ZSHRC}" ]; then
+    DESCRIBE_ZSHRC_STATE="other"
+  else
+    DESCRIBE_ZSHRC_STATE="missing"
+  fi
+
+  DESCRIBE_EXISTING_PROFILE="$(receipt_value profile "${DESCRIBE_CONFIG_HOME}/setup/receipt" 2>/dev/null || true)"
+  case "${DESCRIBE_EXISTING_PROFILE}" in loader | annex | zunit) ;; *) DESCRIBE_EXISTING_PROFILE=none ;; esac
+  DESCRIBE_LEGACY_ZUNIT=0
+  if [ "${DESCRIBE_SKIP_ZSHRC}" -eq 0 ] && [ -f "${DESCRIBE_ZSHRC}" ]; then
+    DESCRIBE_ZUNIT_TEMPLATE="${DESCRIBE_WORK}/legacy-zunit"
+    DESCRIBE_STRIPPED="${DESCRIBE_WORK}/zshrc-stripped"
+    DESCRIBE_MATCH_RESULT="${DESCRIBE_WORK}/zunit-matches"
+    write_legacy_zunit >"${DESCRIBE_ZUNIT_TEMPLATE}"
+    strip_exact_block "${DESCRIBE_ZSHRC}" "${DESCRIBE_ZUNIT_TEMPLATE}" "${DESCRIBE_STRIPPED}" "${DESCRIBE_MATCH_RESULT}"
+    [ "$(cat "${DESCRIBE_MATCH_RESULT}")" -eq 0 ] || DESCRIBE_LEGACY_ZUNIT=1
+  fi
+  if [ "${DESCRIBE_EXISTING_PROFILE}" = zunit ]; then DESCRIBE_LEGACY_ZUNIT=1; fi
+
+  add_fact "${DESCRIBE_WORK}" config-home "${DESCRIBE_CONFIG_HOME}" inferred certain
+  add_fact "${DESCRIBE_WORK}" zi-home "${DESCRIBE_ZI_HOME}" inferred "$(if [ "${DESCRIBE_HOME_STATE}" = selected ]; then printf certain; else printf unknown; fi)"
+  add_fact "${DESCRIBE_WORK}" checkout-path "${DESCRIBE_CHECKOUT}" inferred "$(if [ "${DESCRIBE_HOME_STATE}" = selected ]; then printf certain; else printf unknown; fi)"
+  add_fact "${DESCRIBE_WORK}" zi-home-state "${DESCRIBE_HOME_STATE}" observed certain
+  add_fact "${DESCRIBE_WORK}" zshrc-path "${DESCRIBE_ZSHRC}" inferred certain
+  add_fact "${DESCRIBE_WORK}" zshrc-state "${DESCRIBE_ZSHRC_STATE}" observed certain
+  add_fact "${DESCRIBE_WORK}" git "${DESCRIBE_GIT}" observed certain
+  add_fact "${DESCRIBE_WORK}" zsh "${DESCRIBE_ZSH}" observed certain
+  add_fact "${DESCRIBE_WORK}" tty "${DESCRIBE_TTY}" observed certain
+  add_fact "${DESCRIBE_WORK}" existing-profile "${DESCRIBE_EXISTING_PROFILE}" observed certain
+
+  DESCRIBE_SELECTABLE=yes
+  DESCRIBE_REASON="Ready to plan"
+  if [ "${DESCRIBE_HOME_STATE}" != selected ]; then
+    DESCRIBE_SELECTABLE=no
+    DESCRIBE_REASON="Both legacy and XDG Zi homes exist; choose --zi-home"
+  elif [ "${DESCRIBE_GIT}" != available ]; then
+    DESCRIBE_SELECTABLE=no
+    DESCRIBE_REASON="git is required to install or update Zi"
+  elif [ "${DESCRIBE_ZSH}" != available ]; then
+    DESCRIBE_SELECTABLE=no
+    DESCRIBE_REASON="zsh is required to use Zi"
+  fi
+  add_profile "${DESCRIBE_WORK}" loader "${DESCRIBE_SELECTABLE}" "${DESCRIBE_REASON}" "Zi only"
+  add_profile "${DESCRIBE_WORK}" annex "${DESCRIBE_SELECTABLE}" "${DESCRIBE_REASON}" "Zi with annexes"
+  if [ "${DESCRIBE_LEGACY_ZUNIT}" -eq 1 ]; then
+    add_profile "${DESCRIBE_WORK}" zunit no "Preserved only while migrating existing setup content" "Legacy zunit compatibility"
+  fi
+
+  command rm -f "${DESCRIBE_WORK}/legacy-zunit" "${DESCRIBE_WORK}/zshrc-stripped" \
+    "${DESCRIBE_WORK}/zunit-matches"
+  if path_exists "${DESCRIBE_OUTPUT}"; then
+    die "describe output path appeared while discovering: ${DESCRIBE_OUTPUT}"
+  fi
+  command mv "${DESCRIBE_WORK}" "${DESCRIBE_OUTPUT}" || die "cannot publish describe artifact ${DESCRIBE_OUTPUT}"
+  DESCRIBE_WORK=""
+  trap - EXIT INT TERM
+  printf '%s\n' "Describe artifact: ${DESCRIBE_OUTPUT}"
+  if [ "${DESCRIBE_SELECTABLE}" = no ]; then exit 3; fi
+}
+
 plan_command() {
+  DIE_STATUS=2
   PLAN_DIR=""
   PROFILE=loader
   REF=main
@@ -553,7 +841,14 @@ plan_command() {
   is_absolute_path "${ZSHRC_PATH}" || die '--zshrc must be absolute'
   validate_text_path '--config-home' "${CONFIG_HOME}"
   validate_text_path '--zshrc' "${ZSHRC_PATH}"
+  if path_exists "${PLAN_DIR}"; then
+    die "plan path already exists: ${PLAN_DIR}"
+  fi
+  PLAN_PARENT="$(dirname "${PLAN_DIR}")"
+  [ -d "${PLAN_PARENT}" ] || die "plan parent does not exist: ${PLAN_PARENT}"
+  [ -w "${PLAN_PARENT}" ] || die "plan parent is not writable: ${PLAN_PARENT}"
 
+  DIE_STATUS=3
   LEGACY_DIRECT_FOUND=0
   LEGACY_DIRECT_HOME=""
   LEGACY_DIRECT_BIN=""
@@ -580,12 +875,13 @@ plan_command() {
   EXPECTED_INIT="$(awk '$2 == "public/zsh/init.zsh" {print $1}' "${CHECKSUM_FILE}")"
   [ -n "${EXPECTED_INIT}" ] || die 'checksum file has no public/zsh/init.zsh entry'
   [ "$(sha256_file "${INIT_SOURCE}")" = "${EXPECTED_INIT}" ] || die 'init asset does not match the published checksum'
-  [ ! -e "${PLAN_DIR}" ] || die "plan path already exists: ${PLAN_DIR}"
-
-  PLAN_WORK="$(mktemp -d "${TMPDIR:-/tmp}/zi-setup-plan.XXXXXX")" || exit 1
+  PLAN_WORK="$(mktemp -d "${PLAN_PARENT}/.zi-setup-plan.XXXXXX")" || die "cannot stage plan in ${PLAN_PARENT}"
   trap 'rm -rf "${PLAN_WORK:?}"' EXIT INT TERM
-  command mkdir -p "${PLAN_WORK}/artifact/checkout" "${PLAN_WORK}/artifact/targets"
+  command mkdir -p "${PLAN_WORK}/artifact/checkout" "${PLAN_WORK}/artifact/targets" \
+    "${PLAN_WORK}/artifact/operations" "${PLAN_WORK}/artifact/warnings"
   : >"${PLAN_WORK}/artifact/targets/order"
+  : >"${PLAN_WORK}/artifact/operations/order"
+  : >"${PLAN_WORK}/artifact/warnings/order"
   RECEIPT_PATH="${CONFIG_HOME}/setup/receipt"
 
   INIT_CONTENT="${PLAN_WORK}/init.zsh"
@@ -714,6 +1010,35 @@ EOF
   fi
   printf '%s\n' "${REF}" >"${PLAN_WORK}/artifact/checkout/requested-ref"
 
+  case "$(cat "${PLAN_WORK}/artifact/checkout/kind")" in
+  missing) PLAN_CHECKOUT_KIND=clone ;;
+  existing) PLAN_CHECKOUT_KIND=fast-forward ;;
+  *) die 'invalid planned checkout kind' ;;
+  esac
+  add_operation "${PLAN_WORK}/artifact" checkout-sync checkout "${PLAN_CHECKOUT_KIND}" \
+    "Synchronize Zi checkout at ${CHECKOUT_PATH}"
+  add_operation "${PLAN_WORK}/artifact" write-files files write-files \
+    "Write guided setup files under ${CONFIG_HOME}"
+  case "${EFFECTIVE_PROFILE}" in
+  annex)
+    add_warning "${PLAN_WORK}/artifact" deferred-first-start info \
+      "Annex recipes are installed on the first shell start" \
+      "Start Zsh after apply with network access available"
+    ;;
+  zunit)
+    add_warning "${PLAN_WORK}/artifact" legacy-zunit warning \
+      "The legacy zunit recipe is retained for compatibility" \
+      "Choose loader or annex in a later plan to remove the legacy recipe"
+    ;;
+  loader) ;;
+  *) die "invalid effective profile ${EFFECTIVE_PROFILE}" ;;
+  esac
+  if [ "${SKIP_ZSHRC}" -eq 1 ]; then
+    add_warning "${PLAN_WORK}/artifact" zshrc-skipped warning \
+      "The plan does not update .zshrc" \
+      "Source ${CONFIG_HOME}/setup.zsh from the intended Zsh startup file"
+  fi
+
   add_target "${PLAN_WORK}/artifact" init "${CONFIG_HOME}/init.zsh" "${INIT_CONTENT}" 755 "${RECEIPT_PATH}"
   add_target "${PLAN_WORK}/artifact" pre "${CONFIG_HOME}/setup/pre.zsh" "${PRE_CONTENT}" 600 "${RECEIPT_PATH}"
   add_target "${PLAN_WORK}/artifact" shell "${CONFIG_HOME}/setup/shell.zsh" "${SHELL_CONTENT}" 600 "${RECEIPT_PATH}"
@@ -723,9 +1048,15 @@ EOF
     printf '%s\n' "$(sha256_file "${MANAGED_BLOCK}")" >"${PLAN_WORK}/artifact/targets/zshrc/block-hash"
   fi
 
+  if path_exists "${PLAN_DIR}"; then
+    die "plan path appeared while planning: ${PLAN_DIR}"
+  fi
+  PLAN_ID="$(artifact_hash "${PLAN_WORK}/artifact")"
+  printf '%s\n' "${PLAN_ID}" >"${PLAN_WORK}/artifact/plan.id"
+  if path_exists "${PLAN_DIR}"; then
+    die "plan path appeared while planning: ${PLAN_DIR}"
+  fi
   command mv "${PLAN_WORK}/artifact" "${PLAN_DIR}"
-  PLAN_ID="$(artifact_hash "${PLAN_DIR}")"
-  printf '%s\n' "${PLAN_ID}" >"${PLAN_DIR}/plan.id"
   printf '%s\n' "Plan SHA256: ${PLAN_ID}"
   printf '%s\n' "Checkout phase: $(cat "${PLAN_DIR}/checkout/kind") ${CHECKOUT_PATH} -> ${REF}"
   while IFS= read -r TARGET_ID; do
@@ -744,21 +1075,135 @@ nearest_existing_parent() {
   printf '%s\n' "${_parent_path}"
 }
 
+result_init() {
+  _result_path="$1"
+  _result_plan="$2"
+  _result_phase="$3"
+  if path_exists "${_result_path}"; then
+    die "result path already exists: ${_result_path}"
+  fi
+  _result_parent="$(dirname "${_result_path}")"
+  [ -d "${_result_parent}" ] || die "result parent does not exist: ${_result_parent}"
+  [ -w "${_result_parent}" ] || die "result parent is not writable: ${_result_parent}"
+  RESULT_WORK="$(mktemp -d "${_result_parent}/.zi-setup-result.XXXXXX")" ||
+    die "cannot stage result artifact in ${_result_parent}"
+  RESULT_DIR="${_result_path}"
+  RESULT_PHASE="${_result_phase}"
+  RESULT_PLAN_ID="$(cat "${_result_plan}/plan.id" 2>/dev/null || printf unknown)"
+  command mkdir -p "${RESULT_WORK}/operations"
+  printf '%s\n' zi-setup-result-v1 >"${RESULT_WORK}/format"
+  printf '%s\n' "${RESULT_PLAN_ID}" >"${RESULT_WORK}/plan.id"
+  printf '%s\n' "${RESULT_PHASE}" >"${RESULT_WORK}/phase"
+  : >"${RESULT_WORK}/operations/order"
+  RESULT_ACTIVE=1
+  RESULT_PUBLISHED=0
+  trap 'apply_exit "$?"' EXIT
+  trap 'apply_cancel' INT TERM HUP
+}
+
+result_publish() {
+  _result_status="$1"
+  _result_code="$2"
+  _result_operation="$3"
+  _result_detail="$4"
+  [ "${RESULT_ACTIVE}" -eq 1 ] || return 0
+  [ "${RESULT_PUBLISHED}" -eq 0 ] || return 0
+  printf '%s\n' "${_result_status}" >"${RESULT_WORK}/status" || return 1
+  if [ -n "${_result_operation}" ]; then
+    printf '%s\n' "${_result_operation}" >"${RESULT_WORK}/operations/order" || return 1
+    case "${_result_status}" in
+    succeeded) _result_operation_status=succeeded ;;
+    cancelled) _result_operation_status=cancelled ;;
+    *) _result_operation_status=failed ;;
+    esac
+    write_field "${RESULT_WORK}" "operations/${_result_operation}/status" "${_result_operation_status}"
+    _result_write_status="$?"
+    [ "${_result_write_status}" -eq 0 ] || return 1
+    write_field "${RESULT_WORK}" "operations/${_result_operation}/detail" "${_result_detail}"
+    _result_write_status="$?"
+    [ "${_result_write_status}" -eq 0 ] || return 1
+  fi
+  if [ "${_result_status}" != succeeded ]; then
+    write_field "${RESULT_WORK}" error/code "${_result_code}"
+    _result_write_status="$?"
+    [ "${_result_write_status}" -eq 0 ] || return 1
+    if [ -n "${_result_operation}" ]; then
+      write_field "${RESULT_WORK}" error/operation "${_result_operation}"
+      _result_write_status="$?"
+      [ "${_result_write_status}" -eq 0 ] || return 1
+    fi
+    write_field "${RESULT_WORK}" error/detail "${_result_detail}"
+    _result_write_status="$?"
+    [ "${_result_write_status}" -eq 0 ] || return 1
+  elif [ "${RESULT_PHASE}" = files ]; then
+    _result_receipt="$(plan_value receipt_path "${APPLY_PLAN}")"
+    write_field "${RESULT_WORK}" receipt/path "${_result_receipt}"
+    _result_write_status="$?"
+    [ "${_result_write_status}" -eq 0 ] || return 1
+  fi
+  if path_exists "${RESULT_DIR}"; then return 1; fi
+  command mv "${RESULT_WORK}" "${RESULT_DIR}" || return 1
+  RESULT_WORK=""
+  RESULT_PUBLISHED=1
+}
+
+apply_cleanup() {
+  if [ -n "${ACTIVE_LOCK}" ]; then
+    command rmdir "${ACTIVE_LOCK}" 2>/dev/null || true
+    ACTIVE_LOCK=""
+  fi
+  if [ -n "${RESULT_WORK}" ] && [ -d "${RESULT_WORK}" ]; then
+    command rm -rf "${RESULT_WORK}"
+    RESULT_WORK=""
+  fi
+}
+
+apply_exit() {
+  _apply_exit_status="$1"
+  trap - EXIT INT TERM HUP
+  if [ "${RESULT_ACTIVE}" -eq 1 ] && [ "${RESULT_PUBLISHED}" -eq 0 ]; then
+    if [ "${_apply_exit_status}" -eq 0 ]; then _apply_exit_status=5; fi
+    set +e
+    result_publish failed "${RESULT_ERROR_CODE}" "${RESULT_OPERATION}" "${RESULT_DETAIL}"
+    set -e
+  fi
+  apply_cleanup
+  exit "${_apply_exit_status}"
+}
+
+apply_cancel() {
+  trap - INT TERM HUP
+  RESULT_ERROR_CODE=cancelled
+  RESULT_DETAIL="apply was cancelled"
+  set +e
+  result_publish cancelled "${RESULT_ERROR_CODE}" "${RESULT_OPERATION}" "${RESULT_DETAIL}"
+  set -e
+  apply_cleanup
+  trap - EXIT
+  exit 6
+}
+
 acquire_lock() {
   _lock_path="$1"
   command mkdir -p "$(dirname "${_lock_path}")"
   if ! command mkdir "${_lock_path}" 2>/dev/null; then
+    DIE_STATUS=4
+    RESULT_ERROR_CODE=lock-held
+    RESULT_OPERATION=""
     die "lock is already held: ${_lock_path}"
   fi
   ACTIVE_LOCK="${_lock_path}"
-  trap 'rmdir "${ACTIVE_LOCK}" 2>/dev/null || true' EXIT INT TERM
 }
 
 validate_plan() {
   _validate_plan="$1"
   _validate_expect="$2"
+  DIE_STATUS=2
+  RESULT_ERROR_CODE=unsupported-version
   [ -d "${_validate_plan}" ] || die "plan directory not found: ${_validate_plan}"
   [ "$(plan_value format "${_validate_plan}")" = zi-setup-plan-v1 ] || die 'unsupported plan format'
+  DIE_STATUS=4
+  RESULT_ERROR_CODE=plan-changed
   _validate_stored="$(cat "${_validate_plan}/plan.id" 2>/dev/null || true)"
   _validate_actual="$(artifact_hash "${_validate_plan}")"
   [ "${_validate_stored}" = "${_validate_actual}" ] || die 'plan artifact hash mismatch'
@@ -778,15 +1223,20 @@ apply_checkout() {
   _checkout_origin="$(cat "${_checkout_plan}/checkout/origin")"
   _checkout_parent="$(dirname "${_checkout_path}")"
   _checkout_existing_parent="$(nearest_existing_parent "${_checkout_parent}")"
+  DIE_STATUS=4
+  RESULT_ERROR_CODE=checkout-drift
   [ -w "${_checkout_existing_parent}" ] || die "checkout parent is not writable: ${_checkout_existing_parent}"
   acquire_lock "${_checkout_path}.zi-setup.lock"
+  RESULT_OPERATION=checkout-sync
 
   case "${_checkout_kind}" in
   missing)
-    [ ! -e "${_checkout_path}" ] || die "checkout appeared after planning: ${_checkout_path}"
+    ! path_exists "${_checkout_path}" || die "checkout appeared after planning: ${_checkout_path}"
     command mkdir -p "${_checkout_parent}"
     _checkout_tmp="${_checkout_path}.zi-setup-new.$$"
-    [ ! -e "${_checkout_tmp}" ] || die "temporary checkout path exists: ${_checkout_tmp}"
+    ! path_exists "${_checkout_tmp}" || die "temporary checkout path exists: ${_checkout_tmp}"
+    DIE_STATUS=5
+    RESULT_ERROR_CODE=network-failed
     if ! command git clone --depth=1 --single-branch --branch "${_checkout_ref}" https://github.com/z-shell/zi.git "${_checkout_tmp}"; then
       command rm -rf "${_checkout_tmp}"
       die "failed to clone Zi at ${_checkout_ref}"
@@ -799,7 +1249,10 @@ apply_checkout() {
     [ "$(command git -C "${_checkout_path}" symbolic-ref --quiet --short HEAD)" = "${_checkout_current_ref}" ] || die 'checkout ref changed after planning'
     [ "$(command git -C "${_checkout_path}" remote get-url origin 2>/dev/null || true)" = "${_checkout_origin}" ] || die 'checkout origin changed after planning'
     [ -f "${_checkout_path}/zi.zsh" ] || die 'checkout zi.zsh disappeared after planning'
+    DIE_STATUS=5
+    RESULT_ERROR_CODE=network-failed
     command git -C "${_checkout_path}" fetch origin "refs/heads/${_checkout_ref}" || die 'checkout fetch failed'
+    RESULT_ERROR_CODE=checkout-failed
     command git -C "${_checkout_path}" merge --ff-only FETCH_HEAD || {
       command git -C "${_checkout_path}" status --short --branch >&2 || true
       die 'checkout cannot be fast-forwarded; local state was left untouched'
@@ -861,13 +1314,18 @@ apply_files() {
   _files_config="$(plan_value config_home "${_files_plan}")"
   _files_receipt="$(plan_value receipt_path "${_files_plan}")"
   _files_config_parent="$(nearest_existing_parent "$(dirname "${_files_config}")")"
+  DIE_STATUS=4
+  RESULT_ERROR_CODE=target-drift
   [ -w "${_files_config_parent}" ] || die "configuration parent is not writable: ${_files_config_parent}"
   acquire_lock "${_files_config}.zi-setup.lock"
+  RESULT_OPERATION=write-files
 
   while IFS= read -r _files_id; do
     validate_target_precondition "${_files_plan}" "${_files_id}"
   done <"${_files_plan}/targets/order"
 
+  DIE_STATUS=5
+  RESULT_ERROR_CODE=write-failed
   while IFS= read -r _files_id; do
     install_target "${_files_plan}" "${_files_id}"
   done <"${_files_plan}/targets/order"
@@ -896,9 +1354,11 @@ apply_files() {
 }
 
 apply_command() {
+  DIE_STATUS=2
   APPLY_PLAN=""
   APPLY_PHASE=""
   APPLY_EXPECT=""
+  APPLY_RESULT=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
     --plan)
@@ -916,6 +1376,11 @@ apply_command() {
       APPLY_EXPECT="$2"
       shift 2
       ;;
+    --result)
+      [ "$#" -ge 2 ] || die '--result requires a directory'
+      APPLY_RESULT="$2"
+      shift 2
+      ;;
     --help | -h)
       usage
       exit 0
@@ -925,11 +1390,35 @@ apply_command() {
   done
   [ -n "${APPLY_PLAN}" ] || die '--plan is required'
   case "${APPLY_PHASE}" in checkout | files) ;; *) die '--phase must be checkout or files' ;; esac
+  if [ -n "${APPLY_RESULT}" ]; then
+    validate_text_path '--result' "${APPLY_RESULT}"
+    result_init "${APPLY_RESULT}" "${APPLY_PLAN}" "${APPLY_PHASE}"
+  else
+    trap 'apply_exit "$?"' EXIT
+    trap 'apply_cancel' INT TERM HUP
+  fi
   APPLY_PLAN_ID="$(validate_plan "${APPLY_PLAN}" "${APPLY_EXPECT}")"
+  DIE_STATUS=5
   case "${APPLY_PHASE}" in
-  checkout) apply_checkout "${APPLY_PLAN}" ;;
-  files) apply_files "${APPLY_PLAN}" "${APPLY_PLAN_ID}" ;;
+  checkout)
+    RESULT_OPERATION=checkout-sync
+    apply_checkout "${APPLY_PLAN}"
+    ;;
+  files)
+    RESULT_OPERATION=write-files
+    apply_files "${APPLY_PLAN}" "${APPLY_PLAN_ID}"
+    ;;
   esac
+  RESULT_DETAIL="${APPLY_PHASE} phase completed"
+  set +e
+  result_publish succeeded "" "${RESULT_OPERATION}" "${RESULT_DETAIL}"
+  RESULT_PUBLISH_STATUS="$?"
+  set -e
+  if [ "${RESULT_PUBLISH_STATUS}" -ne 0 ]; then
+    DIE_STATUS=5
+    RESULT_ERROR_CODE=write-failed
+    die "cannot publish result artifact ${APPLY_RESULT}"
+  fi
 }
 
 [ "$#" -gt 0 ] || {
@@ -939,6 +1428,7 @@ apply_command() {
 COMMAND="$1"
 shift
 case "${COMMAND}" in
+describe) describe_command "$@" ;;
 plan) plan_command "$@" ;;
 apply) apply_command "$@" ;;
 --help | -h | help) usage ;;
