@@ -290,6 +290,25 @@
               </button>
             </li>
           </ul>
+          <div style="margin-top: 20px">
+            <span class="prompt">❯</span>
+            <span class="command">setup.sh apply --events DIR</span>
+          </div>
+          <div
+            style="
+              margin-top: 8px;
+              color: var(--text-muted);
+              font-size: 12px;
+              line-height: 1.5;
+            "
+          >
+            Optional <code>setup.sh apply --events DIR</code> publishes
+            <code>zi-setup-event-v1</code> atomic numbered directories. Process
+            completion is authoritative; do not parse stdout or stderr. Callers
+            must account for the cancellation-publication limit where a signal
+            interrupting publication may omit the terminal event while cleanup
+            and exit status 6 remain.
+          </div>
           <div style="margin-top: 16px">
             <span class="prompt">❯</span> <span class="blink">_</span>
           </div>

@@ -26,11 +26,28 @@ RESULT_OPERATION=""
 RESULT_ERROR_CODE="operation-failed"
 RESULT_DETAIL="operation failed"
 ACTIVE_LOCK=""
+EVENTS_ACTIVE=0
+EVENTS_DIR=""
+EVENTS_SEQ=0
+EVENTS_OPERATION=""
+EVENTS_OPERATION_ACTIVE=0
+EVENTS_TERMINAL_PUBLISHED=0
+EVENTS_PUBLISHING=0
 
 die() {
   _die_detail="$*"
   printf '%s\n' "${PROGRAM}: ${_die_detail}" >&2
   RESULT_DETAIL="${_die_detail}"
+  if [ "${EVENTS_ACTIVE}" -eq 1 ] && [ "${EVENTS_OPERATION_ACTIVE}" -eq 1 ] && [ "${EVENTS_TERMINAL_PUBLISHED}" -eq 0 ] && [ "${EVENTS_PUBLISHING}" -eq 0 ]; then
+    set +e
+    case "${EVENTS_OPERATION}" in
+    checkout-sync) _event_fail_detail="checkout failed" ;;
+    write-files) _event_fail_detail="writing files failed" ;;
+    *) _event_fail_detail="operation failed" ;;
+    esac
+    event_finish failed "${_event_fail_detail}"
+    set -e
+  fi
   if [ "${RESULT_ACTIVE}" -eq 1 ] && [ "${RESULT_PUBLISHED}" -eq 0 ]; then
     set +e
     result_publish failed "${RESULT_ERROR_CODE}" "${RESULT_OPERATION}" "${RESULT_DETAIL}"
@@ -50,7 +67,7 @@ Usage:
                 [--zshrc FILE] [--init FILE] [--profiles FILE]
                 [--checksum FILE] [--skip-zshrc]
   setup.sh apply --plan DIR --phase checkout|files [--expect SHA256]
-                 [--result DIR]
+                 [--result DIR] [--events DIR]
 EOF
 }
 
@@ -1147,6 +1164,115 @@ result_publish() {
   RESULT_PUBLISHED=1
 }
 
+events_init() {
+  _events_path="$1"
+  [ -n "${_events_path}" ] || die '--events requires a directory'
+  while :; do
+    case "${_events_path}" in
+    /) break ;;
+    */) _events_path="${_events_path%/}" ;;
+    *) break ;;
+    esac
+  done
+  is_absolute_path "${_events_path}" || die '--events must be an absolute path'
+  validate_text_path '--events' "${_events_path}"
+  if [ -L "${_events_path}" ] || path_exists "${_events_path}"; then
+    die "events path already exists: ${_events_path}"
+  fi
+  _events_parent="$(dirname "${_events_path}")"
+  [ -d "${_events_parent}" ] || die "events parent does not exist: ${_events_parent}"
+  [ -w "${_events_parent}" ] || die "events parent is not writable: ${_events_parent}"
+  command mkdir -m 0700 "${_events_path}" 2>/dev/null || die "cannot create events directory: ${_events_path}"
+  command chmod 0700 "${_events_path}" 2>/dev/null || die "cannot set mode on events directory: ${_events_path}"
+  if [ -L "${_events_path}" ]; then
+    die "events path is a symlink: ${_events_path}"
+  fi
+  EVENTS_DIR="${_events_path}"
+  EVENTS_ACTIVE=1
+  EVENTS_SEQ=0
+  EVENTS_OPERATION=""
+  EVENTS_OPERATION_ACTIVE=0
+  EVENTS_TERMINAL_PUBLISHED=0
+  EVENTS_PUBLISHING=0
+}
+
+event_publish() {
+  _event_status="$1"
+  _event_detail="$2"
+  [ "${EVENTS_ACTIVE}" -eq 1 ] || return 0
+  [ -n "${EVENTS_OPERATION}" ] || return 0
+  if [ "${EVENTS_PUBLISHING}" -eq 1 ]; then
+    return 0
+  fi
+  case "${_event_status}" in
+  succeeded | failed)
+    [ "${EVENTS_TERMINAL_PUBLISHED}" -eq 0 ] || return 0
+    EVENTS_TERMINAL_PUBLISHED=1
+    ;;
+  esac
+
+  EVENTS_PUBLISHING=1
+  EVENTS_SEQ=$((EVENTS_SEQ + 1))
+  _event_stage="$(mktemp -d "${EVENTS_DIR}/.tmp-event.XXXXXX" 2>/dev/null)" || {
+    EVENTS_PUBLISHING=0
+    EVENTS_TERMINAL_PUBLISHED=1
+    DIE_STATUS=5
+    die "cannot stage event in ${EVENTS_DIR}"
+  }
+
+  if ! {
+    write_field "${_event_stage}" format zi-setup-event-v1 &&
+      write_field "${_event_stage}" phase "${APPLY_PHASE}" &&
+      write_field "${_event_stage}" operation "${EVENTS_OPERATION}" &&
+      write_field "${_event_stage}" status "${_event_status}" &&
+      write_field "${_event_stage}" detail "${_event_detail}"
+  }; then
+    command rm -rf "${_event_stage}"
+    EVENTS_PUBLISHING=0
+    EVENTS_TERMINAL_PUBLISHED=1
+    DIE_STATUS=5
+    die "cannot write event fields in ${EVENTS_DIR}"
+  fi
+  command chmod 0700 "${_event_stage}" 2>/dev/null || true
+
+  _seq_name="$(printf '%06d' "${EVENTS_SEQ}")"
+  _event_final="${EVENTS_DIR}/${_seq_name}"
+  if path_exists "${_event_final}"; then
+    command rm -rf "${_event_stage}"
+    EVENTS_PUBLISHING=0
+    EVENTS_TERMINAL_PUBLISHED=1
+    DIE_STATUS=5
+    die "event destination already exists: ${_event_final}"
+  fi
+
+  command mv "${_event_stage}" "${_event_final}" 2>/dev/null || {
+    command rm -rf "${_event_stage}"
+    EVENTS_PUBLISHING=0
+    EVENTS_TERMINAL_PUBLISHED=1
+    DIE_STATUS=5
+    die "cannot publish event to ${_event_final}"
+  }
+  EVENTS_PUBLISHING=0
+}
+
+event_start() {
+  _start_operation="$1"
+  _start_detail="$2"
+  [ "${EVENTS_ACTIVE}" -eq 1 ] || return 0
+  EVENTS_OPERATION="${_start_operation}"
+  EVENTS_OPERATION_ACTIVE=1
+  event_publish started "${_start_detail}"
+}
+
+event_finish() {
+  _finish_status="$1"
+  _finish_detail="$2"
+  [ "${EVENTS_ACTIVE}" -eq 1 ] || return 0
+  [ "${EVENTS_OPERATION_ACTIVE}" -eq 1 ] || return 0
+  event_publish "${_finish_status}" "${_finish_detail}"
+  EVENTS_OPERATION_ACTIVE=0
+}
+
 apply_cleanup() {
   if [ -n "${ACTIVE_LOCK}" ]; then
     command rmdir "${ACTIVE_LOCK}" 2>/dev/null || true
@@ -1156,11 +1282,24 @@ apply_cleanup() {
     command rm -rf "${RESULT_WORK}"
     RESULT_WORK=""
   fi
+  if [ -n "${EVENTS_DIR}" ] && [ -d "${EVENTS_DIR}" ]; then
+    command rm -rf "${EVENTS_DIR}"/.tmp-event.* 2>/dev/null || true
+  fi
 }
 
 apply_exit() {
   _apply_exit_status="$1"
   trap - EXIT INT TERM HUP
+  if [ "${EVENTS_ACTIVE}" -eq 1 ] && [ "${EVENTS_OPERATION_ACTIVE}" -eq 1 ] && [ "${EVENTS_TERMINAL_PUBLISHED}" -eq 0 ] && [ "${EVENTS_PUBLISHING}" -eq 0 ]; then
+    set +e
+    case "${EVENTS_OPERATION}" in
+    checkout-sync) _event_fail_detail="checkout failed" ;;
+    write-files) _event_fail_detail="writing files failed" ;;
+    *) _event_fail_detail="operation failed" ;;
+    esac
+    event_finish failed "${_event_fail_detail}"
+    set -e
+  fi
   if [ "${RESULT_ACTIVE}" -eq 1 ] && [ "${RESULT_PUBLISHED}" -eq 0 ]; then
     if [ "${_apply_exit_status}" -eq 0 ]; then _apply_exit_status=5; fi
     set +e
@@ -1175,6 +1314,16 @@ apply_cancel() {
   trap - INT TERM HUP
   RESULT_ERROR_CODE=cancelled
   RESULT_DETAIL="apply was cancelled"
+  if [ "${EVENTS_ACTIVE}" -eq 1 ] && [ "${EVENTS_OPERATION_ACTIVE}" -eq 1 ] && [ "${EVENTS_TERMINAL_PUBLISHED}" -eq 0 ] && [ "${EVENTS_PUBLISHING}" -eq 0 ]; then
+    set +e
+    case "${EVENTS_OPERATION}" in
+    checkout-sync) _event_fail_detail="checkout failed" ;;
+    write-files) _event_fail_detail="writing files failed" ;;
+    *) _event_fail_detail="operation failed" ;;
+    esac
+    event_finish failed "${_event_fail_detail}"
+    set -e
+  fi
   set +e
   result_publish cancelled "${RESULT_ERROR_CODE}" "${RESULT_OPERATION}" "${RESULT_DETAIL}"
   set -e
@@ -1228,6 +1377,7 @@ apply_checkout() {
   [ -w "${_checkout_existing_parent}" ] || die "checkout parent is not writable: ${_checkout_existing_parent}"
   acquire_lock "${_checkout_path}.zi-setup.lock"
   RESULT_OPERATION=checkout-sync
+  event_start checkout-sync "synchronizing checkout"
 
   case "${_checkout_kind}" in
   missing)
@@ -1261,6 +1411,7 @@ apply_checkout() {
   *) die "invalid checkout kind ${_checkout_kind}" ;;
   esac
   printf '%s\n' "Checkout phase applied: ${_checkout_path}"
+  event_finish succeeded "checkout completed"
 }
 
 validate_target_precondition() {
@@ -1319,6 +1470,7 @@ apply_files() {
   [ -w "${_files_config_parent}" ] || die "configuration parent is not writable: ${_files_config_parent}"
   acquire_lock "${_files_config}.zi-setup.lock"
   RESULT_OPERATION=write-files
+  event_start write-files "writing files"
 
   while IFS= read -r _files_id; do
     validate_target_precondition "${_files_plan}" "${_files_id}"
@@ -1351,6 +1503,7 @@ apply_files() {
   command chmod 600 "${_files_receipt_tmp}"
   command mv "${_files_receipt_tmp}" "${_files_receipt}"
   printf '%s\n' "Files phase applied. Receipt: ${_files_receipt}"
+  event_finish succeeded "files completed"
 }
 
 apply_command() {
@@ -1359,6 +1512,7 @@ apply_command() {
   APPLY_PHASE=""
   APPLY_EXPECT=""
   APPLY_RESULT=""
+  APPLY_EVENTS=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
     --plan)
@@ -1381,6 +1535,11 @@ apply_command() {
       APPLY_RESULT="$2"
       shift 2
       ;;
+    --events)
+      [ "$#" -ge 2 ] || die '--events requires a directory'
+      APPLY_EVENTS="$2"
+      shift 2
+      ;;
     --help | -h)
       usage
       exit 0
@@ -1396,6 +1555,9 @@ apply_command() {
   else
     trap 'apply_exit "$?"' EXIT
     trap 'apply_cancel' INT TERM HUP
+  fi
+  if [ -n "${APPLY_EVENTS}" ]; then
+    events_init "${APPLY_EVENTS}"
   fi
   APPLY_PLAN_ID="$(validate_plan "${APPLY_PLAN}" "${APPLY_EXPECT}")"
   DIE_STATUS=5
