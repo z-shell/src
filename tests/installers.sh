@@ -442,6 +442,18 @@ case "${cmd}" in
       printf '%s\n' "fatal: simulated clone failure" >&2
       exit 128
     fi
+    if [ -n "${ZI_SRC_TEST_FAKE_GIT_HOLD:-}" ] || [ -n "${ZI_SRC_TEST_FAKE_CLONE_HOLD:-}" ]; then
+      _hold_val="${ZI_SRC_TEST_FAKE_GIT_HOLD:-${ZI_SRC_TEST_FAKE_CLONE_HOLD}}"
+      if [ -e "${_hold_val}" ]; then
+        while [ -e "${_hold_val}" ]; do
+          sleep 0.05 2>/dev/null || sleep 1
+        done
+      elif [ "${_hold_val}" = "1" ]; then
+        sleep 1
+      else
+        sleep "${_hold_val}" 2>/dev/null || sleep 1
+      fi
+    fi
     mkdir -p "${dest}/.git" "${dest}/lib"
     printf '%s\n' '# fake zi.zsh' > "${dest}/zi.zsh"
     printf '%s\n' '# fake _zi completion' > "${dest}/lib/_zi"
@@ -1190,6 +1202,237 @@ test_setup_apply_result_contract() {
   pass 'apply publishes stable success and failure result artifacts'
 }
 
+test_setup_apply_events_contract() {
+  events_home="${TMP_ROOT}/events-home"
+  events_config="${TMP_ROOT}/events-config"
+  events_data="${TMP_ROOT}/events-data"
+  events_plan="${TMP_ROOT}/events-plan"
+  checkout_events="${TMP_ROOT}/events-checkout"
+  checkout_result="${TMP_ROOT}/events-checkout-result"
+  files_events="${TMP_ROOT}/events-files"
+  files_result="${TMP_ROOT}/events-files-result"
+  command mkdir -p "${events_home}"
+
+  HOME="${events_home}" \
+    XDG_CONFIG_HOME="${events_config}" \
+    XDG_DATA_HOME="${events_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${events_plan}" --skip-zshrc >/dev/null
+
+  # 1. Checkout phase success with streaming events
+  HOME="${events_home}" \
+    XDG_CONFIG_HOME="${events_config}" \
+    XDG_DATA_HOME="${events_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${events_plan}" --phase checkout \
+    --expect "$(cat "${events_plan}/plan.id")" \
+    --result "${checkout_result}" \
+    --events "${checkout_events}" >/dev/null
+
+  case "$(ls -ld "${checkout_events}")" in "drwx------"*) ;; *) fail "checkout events dir mode is not 0700" ;; esac
+  [ -d "${checkout_events}/000001" ] || fail "checkout event 000001 missing"
+  [ -d "${checkout_events}/000002" ] || fail "checkout event 000002 missing"
+  [ ! -e "${checkout_events}/000003" ] || fail "extra checkout event published"
+  for entry in "${checkout_events}"/* "${checkout_events}"/.[!.]* "${checkout_events}"/..?*; do
+    [ -e "${entry}" ] || continue
+    [ -d "${entry}" ] || fail "root entry is not a directory: ${entry}"
+  done
+  for entry in "${checkout_events}"/.tmp-event.*; do
+    [ -e "${entry}" ] || continue
+    fail "temporary staging directory remained in checkout events dir: ${entry}"
+  done
+  [ "$(cat "${checkout_events}/000001/format")" = zi-setup-event-v1 ] || fail "checkout event 1 format invalid"
+  [ "$(cat "${checkout_events}/000001/phase")" = checkout ] || fail "checkout event 1 phase invalid"
+  [ "$(cat "${checkout_events}/000001/operation")" = checkout-sync ] || fail "checkout event 1 operation invalid"
+  [ "$(cat "${checkout_events}/000001/status")" = started ] || fail "checkout event 1 status invalid"
+  [ "$(cat "${checkout_events}/000001/detail")" = "synchronizing checkout" ] || fail "checkout event 1 detail invalid"
+  [ "$(cat "${checkout_events}/000002/format")" = zi-setup-event-v1 ] || fail "checkout event 2 format invalid"
+  [ "$(cat "${checkout_events}/000002/phase")" = checkout ] || fail "checkout event 2 phase invalid"
+  [ "$(cat "${checkout_events}/000002/operation")" = checkout-sync ] || fail "checkout event 2 operation invalid"
+  [ "$(cat "${checkout_events}/000002/status")" = succeeded ] || fail "checkout event 2 status invalid"
+  [ "$(cat "${checkout_events}/000002/detail")" = "checkout completed" ] || fail "checkout event 2 detail invalid"
+  [ "$(cat "${checkout_result}/status")" = succeeded ] || fail "checkout result status invalid"
+
+  # 2. Files phase success with streaming events
+  HOME="${events_home}" \
+    XDG_CONFIG_HOME="${events_config}" \
+    XDG_DATA_HOME="${events_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${events_plan}" --phase files \
+    --expect "$(cat "${events_plan}/plan.id")" \
+    --result "${files_result}" \
+    --events "${files_events}" >/dev/null
+
+  case "$(ls -ld "${files_events}")" in "drwx------"*) ;; *) fail "files events dir mode is not 0700" ;; esac
+  [ -d "${files_events}/000001" ] || fail "files event 000001 missing"
+  [ -d "${files_events}/000002" ] || fail "files event 000002 missing"
+  [ ! -e "${files_events}/000003" ] || fail "extra files event published"
+  for entry in "${files_events}"/* "${files_events}"/.[!.]* "${files_events}"/..?*; do
+    [ -e "${entry}" ] || continue
+    [ -d "${entry}" ] || fail "root entry is not a directory: ${entry}"
+  done
+  for entry in "${files_events}"/.tmp-event.*; do
+    [ -e "${entry}" ] || continue
+    fail "temporary staging directory remained in files events dir: ${entry}"
+  done
+  [ "$(cat "${files_events}/000001/format")" = zi-setup-event-v1 ] || fail "files event 1 format invalid"
+  [ "$(cat "${files_events}/000001/phase")" = files ] || fail "files event 1 phase invalid"
+  [ "$(cat "${files_events}/000001/operation")" = write-files ] || fail "files event 1 operation invalid"
+  [ "$(cat "${files_events}/000001/status")" = started ] || fail "files event 1 status invalid"
+  [ "$(cat "${files_events}/000001/detail")" = "writing files" ] || fail "files event 1 detail invalid"
+  [ "$(cat "${files_events}/000002/format")" = zi-setup-event-v1 ] || fail "files event 2 format invalid"
+  [ "$(cat "${files_events}/000002/phase")" = files ] || fail "files event 2 phase invalid"
+  [ "$(cat "${files_events}/000002/operation")" = write-files ] || fail "files event 2 operation invalid"
+  [ "$(cat "${files_events}/000002/status")" = succeeded ] || fail "files event 2 status invalid"
+  [ "$(cat "${files_events}/000002/detail")" = "files completed" ] || fail "files event 2 detail invalid"
+  [ "$(cat "${files_result}/status")" = succeeded ] || fail "files result status invalid"
+
+  # 3. Network failure during checkout publishes started then failed, no duplicates
+  net_home="${TMP_ROOT}/events-net-home"
+  net_config="${TMP_ROOT}/events-net-config"
+  net_data="${TMP_ROOT}/events-net-data"
+  net_plan="${TMP_ROOT}/events-net-plan"
+  net_events="${TMP_ROOT}/events-net-events"
+  command mkdir -p "${net_home}"
+  HOME="${net_home}" XDG_CONFIG_HOME="${net_config}" XDG_DATA_HOME="${net_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${net_plan}" --skip-zshrc >/dev/null
+  set +e
+  ZI_SRC_TEST_FAKE_CLONE_FAIL=1 PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${net_plan}" --phase checkout \
+    --events "${net_events}" >/dev/null 2>&1
+  net_status="$?"
+  set -e
+  [ "${net_status}" -eq 5 ] || fail "network failure exited ${net_status}, expected 5"
+  [ -d "${net_events}/000001" ] || fail "network failure event 000001 missing"
+  [ -d "${net_events}/000002" ] || fail "network failure event 000002 missing"
+  [ ! -e "${net_events}/000003" ] || fail "duplicate terminal event published on network failure"
+  [ "$(cat "${net_events}/000001/status")" = started ] || fail "network failure event 1 status is not started"
+  [ "$(cat "${net_events}/000002/status")" = failed ] || fail "network failure event 2 status is not failed"
+  [ "$(cat "${net_events}/000002/detail")" = "checkout failed" ] || fail "network failure event 2 detail is not checkout failed"
+
+  # 4. Target drift during files publishes started then failed, no duplicates
+  drift_home="${TMP_ROOT}/events-drift-home"
+  drift_config="${TMP_ROOT}/events-drift-config"
+  drift_data="${TMP_ROOT}/events-drift-data"
+  drift_plan="${TMP_ROOT}/events-drift-plan"
+  drift_events="${TMP_ROOT}/events-drift-events"
+  command mkdir -p "${drift_home}" "${drift_config}/zi"
+  HOME="${drift_home}" XDG_CONFIG_HOME="${drift_config}" XDG_DATA_HOME="${drift_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${drift_plan}" --skip-zshrc >/dev/null
+  printf '%s\n' drift >"${drift_config}/zi/init.zsh"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${drift_plan}" --phase files \
+    --events "${drift_events}" >/dev/null 2>&1
+  drift_status="$?"
+  set -e
+  [ "${drift_status}" -eq 4 ] || fail "target drift exited ${drift_status}, expected 4"
+  [ -d "${drift_events}/000001" ] || fail "drift event 000001 missing"
+  [ -d "${drift_events}/000002" ] || fail "drift event 000002 missing"
+  [ ! -e "${drift_events}/000003" ] || fail "duplicate terminal event published on drift failure"
+  [ "$(cat "${drift_events}/000001/status")" = started ] || fail "drift event 1 status is not started"
+  [ "$(cat "${drift_events}/000002/status")" = failed ] || fail "drift event 2 status is not failed"
+  [ "$(cat "${drift_events}/000002/detail")" = "writing files failed" ] || fail "drift event 2 detail is not writing files failed"
+
+  # 5. Held lock before operation begins publishes no events
+  lock_home="${TMP_ROOT}/events-lock-home"
+  lock_config="${TMP_ROOT}/events-lock-config"
+  lock_data="${TMP_ROOT}/events-lock-data"
+  lock_plan="${TMP_ROOT}/events-lock-plan"
+  lock_events="${TMP_ROOT}/events-lock-events"
+  command mkdir -p "${lock_home}"
+  HOME="${lock_home}" XDG_CONFIG_HOME="${lock_config}" XDG_DATA_HOME="${lock_data}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${lock_plan}" --skip-zshrc >/dev/null
+  command mkdir -p "${lock_config}/zi.zi-setup.lock"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${lock_plan}" --phase files \
+    --events "${lock_events}" >/dev/null 2>&1
+  lock_status="$?"
+  set -e
+  [ "${lock_status}" -eq 4 ] || fail "held lock exited ${lock_status}, expected 4"
+  [ -d "${lock_events}" ] || fail "events dir was not created for held lock"
+  [ -z "$(ls -A "${lock_events}")" ] || fail "held lock published events before operation began"
+
+  # 6. Refusal of existing path, symlink, and invalid/non-absolute paths
+  existing_target="${TMP_ROOT}/events-existing-target"
+  command mkdir -p "${existing_target}"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${events_plan}" --phase files \
+    --events "${existing_target}" >/dev/null 2>&1
+  exist_status="$?"
+  set -e
+  [ "${exist_status}" -eq 2 ] || fail "existing events dir exited ${exist_status}, expected 2"
+
+  symlink_target="${TMP_ROOT}/events-symlink-target"
+  command ln -s "${TMP_ROOT}/events-missing" "${symlink_target}"
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${events_plan}" --phase files \
+    --events "${symlink_target}" >/dev/null 2>&1
+  symlink_status="$?"
+  set -e
+  [ "${symlink_status}" -eq 2 ] || fail "symlink events dir exited ${symlink_status}, expected 2"
+
+  set +e
+  sh "${ROOT}/public/sh/setup.sh" apply --plan "${events_plan}" --phase files \
+    --events "relative-events-dir" >/dev/null 2>&1
+  relative_status="$?"
+  set -e
+  [ "${relative_status}" -eq 2 ] || fail "relative events dir exited ${relative_status}, expected 2"
+
+  # 7. TERM regression for apply --events without --result
+  term_home="${TMP_ROOT}/events-term-home"
+  term_config="${TMP_ROOT}/events-term-config"
+  term_data="${TMP_ROOT}/events-term-data"
+  term_plan="${TMP_ROOT}/events-term-plan"
+  term_events="${TMP_ROOT}/events-term-events"
+  term_lock="${term_data}/zi/bin.zi-setup.lock"
+  command mkdir -p "${term_home}"
+  HOME="${term_home}" XDG_CONFIG_HOME="${term_config}" XDG_DATA_HOME="${term_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" plan --plan "${term_plan}" --skip-zshrc >/dev/null
+
+  ZI_SRC_TEST_FAKE_GIT_HOLD=1 \
+    ZI_SRC_TEST_FAKE_CLONE_HOLD=1 \
+    HOME="${term_home}" XDG_CONFIG_HOME="${term_config}" XDG_DATA_HOME="${term_data}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/setup.sh" apply --plan "${term_plan}" --phase checkout \
+    --events "${term_events}" >/dev/null 2>&1 &
+  apply_pid="$!"
+
+  term_wait=0
+  while [ ! -d "${term_events}/000001" ]; do
+    if ! kill -0 "${apply_pid}" 2>/dev/null; then
+      fail "apply process exited before publishing started"
+    fi
+    term_wait=$((term_wait + 1))
+    if [ "${term_wait}" -ge 250 ]; then
+      kill -TERM "${apply_pid}" 2>/dev/null || true
+      wait "${apply_pid}" 2>/dev/null || true
+      fail "timed out waiting for term_events/000001"
+    fi
+    sleep 0.02 2>/dev/null || sleep 1
+  done
+
+  kill -TERM "${apply_pid}" 2>/dev/null || true
+
+  set +e
+  wait "${apply_pid}"
+  term_status="$?"
+  set -e
+
+  [ "${term_status}" -eq 6 ] || fail "TERM apply exited ${term_status}, expected 6"
+  [ -d "${term_events}/000002" ] || fail "TERM event 000002 missing"
+  [ "$(cat "${term_events}/000002/status")" = failed ] || fail "TERM event 2 status is not failed"
+  [ ! -e "${term_events}/000003" ] || fail "extra event published after TERM"
+  for entry in "${term_events}"/.tmp-event.*; do
+    [ -e "${entry}" ] || continue
+    fail "temporary staging directory remained in events dir after TERM: ${entry}"
+  done
+  [ ! -e "${term_lock}" ] || fail "lock remained after TERM cancellation: ${term_lock}"
+
+  pass 'apply publishes versioned streaming events and enforces directory contract'
+}
+
 test_setup_plan_tamper_is_rejected() {
   tamper_home="${TMP_ROOT}/tamper-home"
   tamper_config="${TMP_ROOT}/tamper-config"
@@ -1733,6 +1976,7 @@ test_zshrc_uses_short_entrypoint
 test_setup_describe_contract
 test_setup_plan_interface_metadata
 test_setup_apply_result_contract
+test_setup_apply_events_contract
 test_setup_plan_tamper_is_rejected
 test_setup_target_drift_is_transactional
 test_setup_symlinked_zshrc_is_refused

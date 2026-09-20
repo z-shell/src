@@ -52,7 +52,13 @@ profile installs Zi without changing `.zshrc`.
 The source-adjacent [Zi Setup TUI contract](zi-setup-tui-contract.md) defines
 the machine interface and acceptance boundary for a future guided terminal
 client. The client offers `loader` and `annex`; `zunit` remains
-compatibility-only for existing installer output.
+compatibility-only for existing installer output. Callers can optionally pass
+`setup.sh apply --events DIR` to stream observational `zi-setup-event-v1`
+atomic numbered directories (`000001`, `000002`, ...). Process completion
+remains authoritative; do not parse stdout or stderr, and clients must account
+for the cancellation-publication limit where a signal interrupting event
+publication itself may omit the terminal event while cleanup and exit status 6
+remain.
 
 ## Repository layout
 
@@ -79,7 +85,7 @@ sh public/sh/generate-checksums.sh
 git diff --exit-code -- public/checksum.txt
 ```
 
-GitHub Actions exercises the installer and loader on Linux, macOS, and Cygwin.
+GitHub Actions exercises the installer and loader on Linux and macOS.
 Merges to `main` publish `public/` through GitHub Pages, and the loader-drift
 workflow verifies that the deployed loader matches its source and checksum.
 

@@ -55,10 +55,10 @@ setup.sh describe --output DIR [--zi-home DIR] [--zi-bin-dir NAME]
                   [--skip-zshrc]
 setup.sh plan --plan DIR [existing options]
 setup.sh apply --plan DIR --phase checkout|files [--expect SHA256]
-               [--result DIR]
+               [--result DIR] [--events DIR]
 ```
 
-`describe` performs bounded read-only discovery. It does not source `.zshrc`, `init.zsh`, Zi, or plugins. It still publishes a describe artifact when all profiles are blocked, then exits with status 3. `plan` remains deterministic for the same filesystem inputs and selected options. `apply` continues to validate the complete plan and relevant preconditions before mutation. When `--result` is present, it publishes a result for validation failures, completed phases, operation failures, and cancellation. Omitting `--result` preserves the existing shell interface.
+`describe` performs bounded read-only discovery. It does not source `.zshrc`, `init.zsh`, Zi, or plugins. It still publishes a describe artifact when all profiles are blocked, then exits with status 3. `plan` remains deterministic for the same filesystem inputs and selected options. `apply` continues to validate the complete plan and relevant preconditions before mutation. When `--result` is present, it publishes a result for validation failures, completed phases, operation failures, and cancellation. When `--events` is present, it publishes machine-readable streaming events for active operations into a private directory. Omitting `--result` and `--events` preserves the existing shell interface.
 
 Human-readable stdout and stderr remain available for direct shell use. Their wording is not part of the interface contract.
 
@@ -144,15 +144,44 @@ receipt/path                       # present after successful files phase
 
 `operations/order` contains the phase operation when execution reached or completed that operation, and is empty for a global failure. `error/operation` is omitted when the failure is not attributable to an operation, including unsupported versions, changed plan content, and a lock already held before the operation begins.
 
-The first pilot may publish the result only when a phase exits. Streaming operation events are deferred until real UI testing shows they are needed. The TUI displays the planned operation name while a phase runs and shows sanitized subprocess logs in an optional details view.
+When `--events` is omitted, the engine publishes results only at phase completion or failure. When `--events DIR` is provided, the engine additionally publishes machine-readable streaming events for each active operation as described below.
+
+### Streaming event artifact
+
+`zi-setup-event-v1` defines the streaming event directory contract published under `setup.sh apply ... --events DIR`:
+
+```text
+format
+phase
+operation
+status
+detail
+```
+
+- `DIR` is created by the engine with mode `0700`. The path must be absolute, must not already exist, must not be a symlink, and must have a writable parent directory. Event initialization or invalid path failures are refused with exit status 2 before apply begins, whereas publication failures after an operation has started exit with status 5. No root-level files are written to `DIR`.
+- Each event is published atomically as a directory under `DIR` named with a six-digit sequence (`000001`, `000002`, ...). Each event is staged under a hidden temporary directory (`.tmp-event.*`) inside `DIR`, all fields are written, and the completed directory is renamed into place.
+- All event files are restricted single-line text ending in a newline:
+  - `format`: `zi-setup-event-v1`
+  - `phase`: `checkout` or `files`
+  - `operation`: the current stable plan operation ID (`checkout-sync` or `write-files`)
+  - `status`: `started`, `succeeded`, or `failed`
+  - `detail`: bounded static display text safe under artifact rules (no newlines, tabs, or control characters).
+- Lifecycle:
+  - `started` is published immediately before executing the selected operation.
+  - `succeeded` is published only after that operation completes.
+  - `failed` is published from the existing error path when an event operation is active.
+  - Ordinary cancellation after an operation has `started` publishes `failed`, removes staging directories, and exits 6. In the narrow limit where a signal interrupts event publication itself, the terminal event may be omitted while cleanup and exit 6 remain.
+  - Duplicate terminal events (`succeeded` or `failed`) are prevented.
+  - If a failure occurs before an operation begins (e.g. invalid arguments, unsupported version, plan hash mismatch, or a held lock), no event operation is active and no event directories are published.
+- Events are observational only: they do not change plan IDs, result contracts, exit codes, stdout, stderr, mutation order, or rollback behavior.
 
 ### Exit status contract
 
 - `0`: requested operation succeeded; its result artifact is complete when `--result` was requested.
-- `2`: invocation or unsupported interface version.
+- `2`: invocation, unsupported interface version, or event directory initialization/path refusal.
 - `3`: discovery or planning cannot produce an actionable artifact.
 - `4`: a plan, checkout, or file precondition changed.
-- `5`: an apply operation began but did not complete.
+- `5`: an apply operation began but did not complete, or event publication failed after start.
 - `6`: the user or supervising process cancelled the operation.
 
 The result artifact carries the specific reason. The exit status only selects the broad recovery path.
