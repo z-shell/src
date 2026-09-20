@@ -4,8 +4,12 @@
 
 set -eu
 
-WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-install.XXXXXX")" || exit 1
-trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
+# Preserve whether the caller selected either checkout component. The loader
+# stays dynamically resolved unless an explicit value must survive startup.
+ZI_HOME_EXPLICIT=0
+[ -z "${ZI_HOME-}" ] || ZI_HOME_EXPLICIT=1
+ZI_BIN_DIR_NAME_EXPLICIT=0
+[ -z "${ZI_BIN_DIR_NAME-}" ] || ZI_BIN_DIR_NAME_EXPLICIT=1
 ZOPT=""
 AOPT=""
 BOPT="main"
@@ -46,6 +50,25 @@ case "${BOPT}" in
   exit 1
   ;;
 esac
+
+case "${ZDOTDIR-}" in
+"" | /*) ;;
+*)
+  printf '%s\n' "-- ERROR -- ZDOTDIR must be an absolute path when set: ${ZDOTDIR}" >&2
+  exit 1
+  ;;
+esac
+
+case "${ZI_HOME-}" in
+"" | /*) ;;
+*)
+  printf '%s\n' "-- ERROR -- ZI_HOME must be an absolute path when set: ${ZI_HOME}" >&2
+  exit 1
+  ;;
+esac
+
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/zi-install.XXXXXX")" || exit 1
+trap 'rm -rf "${WORKDIR:?}"' EXIT INT TERM
 
 SCRIPT_DIR=""
 LOCAL_INIT_ZSH=""
@@ -107,6 +130,14 @@ is_absolute_path() {
   /*) return 0 ;;
   *) return 1 ;;
   esac
+}
+
+zsh_single_quote() {
+  # Single-quoted Zsh text is inert; represent an embedded quote by ending the
+  # quote, escaping one literal quote, and reopening it.
+  printf "'"
+  printf '%s' "$1" | command sed "s/'/'\\\\''/g"
+  printf "'"
 }
 
 zi_home_has_installation() {
@@ -171,6 +202,16 @@ fi
 
 if [ -z "${ZI_BIN_DIR_NAME-}" ]; then
   ZI_BIN_DIR_NAME="bin"
+fi
+
+ZI_LOADER_PATHS_EXPLICIT=0
+ZI_LOADER_HOME_TEXT=""
+ZI_LOADER_BIN_TEXT=""
+if [ "${AOPT}" = loader ] &&
+  { [ "${ZI_HOME_EXPLICIT}" -eq 1 ] || [ "${ZI_BIN_DIR_NAME_EXPLICIT}" -eq 1 ]; }; then
+  ZI_LOADER_PATHS_EXPLICIT=1
+  ZI_LOADER_HOME_TEXT="$(zsh_single_quote "${ZI_HOME}")"
+  ZI_LOADER_BIN_TEXT="$(zsh_single_quote "${ZI_HOME}/${ZI_BIN_DIR_NAME}")"
 fi
 
 if ! test -d "${ZI_HOME}"; then
@@ -295,6 +336,14 @@ if [[ -n \${XDG_CONFIG_HOME:-} && \${XDG_CONFIG_HOME} == /* ]]; then
 else
   ZI_LOADER_CONFIG_HOME="\${HOME}/.config/zi"
 fi
+EOF
+    if [ "${ZI_LOADER_PATHS_EXPLICIT}" -eq 1 ]; then
+      command printf '%s\n' \
+        'typeset -gA ZI' \
+        "ZI[HOME_DIR]=${ZI_LOADER_HOME_TEXT}" \
+        "ZI[BIN_DIR]=${ZI_LOADER_BIN_TEXT}" >>"${THE_ZDOTDIR}/.zshrc"
+    fi
+    command cat <<-EOF >>"${THE_ZDOTDIR}/.zshrc"
 if [[ -r "\${ZI_LOADER_CONFIG_HOME}/init.zsh" ]]; then
   source "\${ZI_LOADER_CONFIG_HOME}/init.zsh" && zzinit
 fi
