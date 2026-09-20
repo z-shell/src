@@ -57,6 +57,8 @@
 
 `public/sh/install.sh` now delegates installation to the POSIX `sh` setup planner. The default `loader` profile writes a reviewable plan, applies the Zi checkout as one phase, and applies loader configuration as a separate phase. The `annex` and `zunit` profiles add pinned recipes that run on the first shell start.
 
+The source-adjacent [Zi Setup TUI contract](zi-setup-tui-contract.md) defines the proposed machine interface and acceptance boundary for a future guided terminal client. The client offers `loader` and `annex`; `zunit` remains compatibility-only for existing installer output.
+
 For a normal installation, run:
 
 ```sh
