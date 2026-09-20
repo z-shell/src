@@ -242,7 +242,7 @@ else
   { git clone --progress --depth=1 --branch "${BOPT}" https://github.com/z-shell/zi.git "${ZI_BIN_DIR_NAME}" \
     2>&1 | { /tmp/zi/git-process-output.zsh || cat; }; } 2>/dev/null
   if [ -d "${ZI_HOME}/${ZI_BIN_DIR_NAME}" ] && [ -f "${ZI_HOME}/${ZI_BIN_DIR_NAME}/zi.zsh" ]; then
-    printf '%s\n' "[1;34m▓▒░[0m Successfully installed at [1;32m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m".
+    printf '%s\n' "[1;34m▓▒░[0m Successfully installed at [1;32m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
   else
     printf '%s\n' "[1;31m▓▒░[0m Something went wrong, couldn't install ZI at [1;33m${ZI_HOME}/${ZI_BIN_DIR_NAME}[0m"
     exit 1
