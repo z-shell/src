@@ -1062,6 +1062,31 @@ test_relative_installer_paths_are_rejected() {
   pass "relative ZDOTDIR and ZI_HOME are rejected before persistent mutation"
 }
 
+test_success_line_reports_exact_path() {
+  home="${TMP_ROOT}/success-home"
+  data="${TMP_ROOT}/success-data"
+  output="${TMP_ROOT}/success-output"
+  plain_output="${TMP_ROOT}/success-output-plain"
+  command mkdir -p "${home}"
+
+  HOME="${home}" \
+    ZDOTDIR="${home}" \
+    XDG_DATA_HOME="${data}" \
+    ZI_SRC_TEST_ROOT="${ROOT}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    sh "${ROOT}/public/sh/install.sh" -i skip >"${output}"
+
+  awk '{
+    gsub(sprintf("%c", 27) "\\[[0-9;]*m", "")
+    print
+  }' "${output}" >"${plain_output}"
+  success_line="$(grep 'Successfully installed at ' "${plain_output}")"
+  reported_path="${success_line#*Successfully installed at }"
+  [ "${reported_path}" = "${data}/zi/bin" ] ||
+    fail "success line reported ${reported_path} instead of ${data}/zi/bin"
+  pass "success line reports the exact installation path"
+}
+
 check_syntax
 check_checksums
 test_init_defaults_are_single_arguments
@@ -1095,3 +1120,4 @@ test_skip_leaves_annex_out
 test_branch_option_rejects_refspec
 test_zshrc_text_uses_home_variable
 test_sync_init
+test_success_line_reports_exact_path
