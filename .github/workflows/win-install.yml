@@ -48,11 +48,11 @@ jobs:
       - name: 🪟 Dependencies (Windows)
         uses: egor-tensin/setup-cygwin@fca9069f92361187d4abfaa5d8a7490e435d8349 # v4.0.2
         with:
-          platform: x64
           packages: curl git zsh
       - name: 🪟 Run Install
         run: |
           set -eu
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
           sh ./tests/installers.sh
           sh -x ./public/sh/install.sh -i skip
