@@ -68,8 +68,8 @@ jobs:
           command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
           sh -x ./public/sh/install.sh -a zunit
           grep -Fq "@zunit" "${XDG_CONFIG_HOME:-$HOME/.config}/zi/setup/shell.zsh"
-          command rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/zi" ~/.zi ~/.zshrc "${XDG_CONFIG_HOME:-$HOME/.config}/zi"
-          sh -x ./public/sh/install.sh -a zpmod
+          # The Cygwin package is older than zpmod's required Zsh 5.8.1.
+          # Linux and macOS exercise the native module build.
         shell: C:\tools\cygwin\bin\bash.exe --login -o igncr '{0}'
       - name: 🪟 Smoke-test — verify zi.zsh present
         run: |
