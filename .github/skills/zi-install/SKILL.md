@@ -2,10 +2,10 @@
 description: Install or update the Zi plugin manager on a user's machine on their behalf, non-interactively, through the official installer and its flags, then verify the result. Never write .zshrc or the Zi configuration home directly.
 metadata:
   github-path: .github/skills/zi-install
-  github-pinned: ce74af22db3af827eed9558596275cdf3fb07505
-  github-ref: ce74af22db3af827eed9558596275cdf3fb07505
+  github-pinned: 1bfbf33a545c4d521b60d535559005f0953b4af4
+  github-ref: 1bfbf33a545c4d521b60d535559005f0953b4af4
   github-repo: https://github.com/z-shell/.github
-  github-tree-sha: c0115d60db843d3e53af79fb6a56106736231bc0
+  github-tree-sha: e5aef83a941177a6f40b3225f9c66a8bfa2f12d2
 name: zi-install
 ---
 
@@ -95,7 +95,7 @@ User dotfiles stay readable and minimal. Implementation details, path checks, er
 
 ## Machine interface
 
-For a source revision that provides `zi-setup-describe-v1` and `zi-setup-result-v1` (introduced by [z-shell/src#224](https://github.com/z-shell/src/pull/224)), use the versioned machine interface rather than parsing human stdout or stderr. Routine installs and older source revisions continue to use the verified `install.sh` flow above; do not assume the machine artifacts exist.
+For a source revision that provides `zi-setup-describe-v1` and `zi-setup-result-v1` (the baseline introduced by [z-shell/src#224](https://github.com/z-shell/src/pull/224)), use the versioned machine interface rather than parsing human stdout or stderr, while `zi-setup-event-v1` is explicitly an optional additive capability from [z-shell/src#225](https://github.com/z-shell/src/issues/225). Routine installs and older source revisions continue to use the verified `install.sh` flow above; do not assume the machine artifacts exist.
 
 Drive the engine only from a local `src` tree or a same-revision companion bundle containing `setup.sh`, `init.zsh`, `profiles.tsv`, and `checksum.txt` after verifying the published checksums. For a fetched bundle, pass the explicit `--profiles` path to `describe`, and the explicit `--init`, `--profiles`, and `--checksum` paths to `plan`.
 
@@ -105,12 +105,12 @@ Drive the engine only from a local `src` tree or a same-revision companion bundl
   - `setup.sh apply --plan DIR --phase checkout|files [--expect SHA256] [--result DIR] [--events DIR]`: Applies the plan phase-by-phase.
 - **Exact plan-id approval:** The plan hash covers all artifact files except `plan.id`. Clients must record the reviewed `plan.id` and pass it via `--expect` for both checkout and files phases. Changed artifact content produces `plan-changed`; changed live checkout or file preconditions produce `checkout-drift` or `target-drift`.
 - **Result artifacts:** Passing `--result DIR` to `apply` publishes a `zi-setup-result-v1` artifact containing `format`, `plan.id`, `phase`, `status` (`succeeded`, `failed`, `cancelled`), and `operations/`. Failures also contain `error/code` and `error/detail`, plus `error/operation` when attributable to one operation. A successful files phase contains `receipt/path`.
-- **Streaming event artifacts:** Passing optional `--events DIR` to `apply` publishes observational `zi-setup-event-v1` events as atomic numbered directories (`000001`, `000002`, ...) containing `format`, `phase`, `operation`, `status` (`started`, `succeeded`, `failed`), and `detail`. Each event is staged in a private hidden directory (`.tmp-event.*`) and renamed into place. Events provide operational progress, but process completion remains authoritative; do not parse stdout or stderr. Ordinary cancellation after an operation starts publishes a terminal `failed` event, though callers must observe the cancellation-publication limit: if a signal interrupts event publication itself, the terminal event may be omitted while cleanup and exit status 6 remain.
+- **Event artifacts:** Passing optional `--events DIR` to `apply` (introduced by [z-shell/src#225](https://github.com/z-shell/src/issues/225)) publishes streaming progress for active operations into a private absolute new directory created by the engine with mode `0700` (the path must be absolute, must not already exist, must not be a symlink, and its immediate parent must already exist and be writable). The engine publishes atomic six-digit `zi-setup-event-v1` directories (`000001`, `000002`, ...) containing `format`, `phase`, `operation`, `status` (`started`, `succeeded`, `failed`), and safe `detail` text. Each event is staged under a hidden temporary directory (`.tmp-event.*`) and renamed into place atomically. The engine emits `started` immediately before executing an active operation and a terminal `succeeded` or `failed` upon completion or error (duplicate terminal events are prevented). If a failure occurs before an operation begins, no event directories are published. Clients must treat process completion as authoritative and tolerate a missing terminal event when a cancellation signal interrupts event publication itself; staging cleanup and exit 6 still apply. Events are observational and do not change plan IDs, result contracts, exit codes, stdout, stderr, mutation order, or rollback behavior.
 - **Stable exit statuses and error codes:**
-  - Exit statuses: `0` (success), `2` (invocation, unsupported version, or event directory initialization/path refusal), `3` (non-actionable discovery/plan), `4` (reviewed state or lock precondition changed, including plan, checkout, target drift, or lock contention), `5` (apply operation began but did not complete, or event publication failed after start), `6` (cancelled).
+  - Exit statuses: `0` (success), `2` (invocation or unsupported version), `3` (non-actionable discovery/plan), `4` (reviewed state or lock precondition changed, including plan, checkout, target drift, or lock contention), `5` (apply operation began but did not complete), `6` (cancelled).
   - Error codes (`error/code`): stable ASCII identifiers including `unsupported-version`, `plan-changed`, `target-drift`, `checkout-drift`, `lock-held`, `network-failed`, `checkout-failed`, `write-failed`, and `cancelled`.
 - **Untrusted display text:** Operation summaries and warnings are display text. Clients must treat them as untrusted terminal content and strip or visibly escape control sequences. Decisions must rely solely on IDs and restricted tokens, never on display text.
-- **Do not parse human stdout/stderr; process completion is authoritative:** Engine stdout and stderr are strictly for user presentation or diagnostics; their wording carries no compatibility promise. Never parse human stdout or stderr to make decisions; consume only documented directory artifacts and exit statuses. Process completion remains authoritative.
+- **Do not parse human stdout/stderr:** Engine stdout and stderr are strictly for user presentation or diagnostics; their wording carries no compatibility promise. Never parse human stdout or stderr to make decisions; consume only documented directory artifacts and exit statuses.
 
 ## Verify
 
