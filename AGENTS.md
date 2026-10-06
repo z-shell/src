@@ -37,9 +37,9 @@ and sync utilities.
 
 - Language: Zsh and POSIX sh.
 - Follow the canonical
-  [shell dialect dispatcher](https://github.com/z-shell/.github/blob/main/.github/instructions/shell.instructions.md)
+  [shell dialect dispatcher](https://github.com/z-shell/.github/blob/main/.github/instructions/zsh/dialect-selection.instructions.md)
   and, for Zsh files, the
-  [Zsh Scripting Standard](https://github.com/z-shell/.github/blob/main/.github/instructions/zsh-scripting.instructions.md).
+  [Zsh Scripting Standard](https://github.com/z-shell/.github/blob/main/.github/instructions/zsh/scripting.instructions.md).
 - Verify installer and loader behavior with the repository test suite:
 
   ```sh
