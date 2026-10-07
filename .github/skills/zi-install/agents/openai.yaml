@@ -1,0 +1,4 @@
+# Codex counterpart of disable-model-invocation in SKILL.md: zi-install changes
+# the user's machine, so it runs only when the user invokes it.
+policy:
+  allow_implicit_invocation: false

@@ -209,7 +209,7 @@ jq '
 ' "$project_root/contracts/installer-contract-v1.json" > "$pending_manifest"
 output="$(zsh "$project_root/scripts/installer-contract-evidence.zsh" --manifest "$pending_manifest")"
 assert_contains "$output" "pending   z-shell/wiki/docs/getting_started/01_installation.mdx (pending publication)"
-assert_contains "$output" "pending   z-shell/.github/.github/skills/zi-install/SKILL.md (pending publication)"
+assert_contains "$output" "pending   z-shell/agent-skills/plugins/z-shell/skills/zi-install/SKILL.md (pending publication)"
 assert_contains "$output" "pending   z-shell/zi/README.md (pending publication)"
 assert_contains "$output" "0 consumer pins current, 3 pending publication"
 assert_not_contains "$output" "3 consumer pins current"
