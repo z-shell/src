@@ -45,6 +45,13 @@ lint:
     - shellcheck@0.11.0
     - shfmt@3.6.0
     - taplo@0.10.0
+  ignore:
+    # The vendored organization code-review skill is installed at a pinned
+    # revision, and org-routing.py check compares its resource files byte for
+    # byte; formatting them would break the pin.
+    - linters: [prettier, markdownlint]
+      paths:
+        - .github/skills/code-review/**
 actions:
   enabled:
     - trunk-announce
