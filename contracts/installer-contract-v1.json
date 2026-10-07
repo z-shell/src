@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": 3,
+  "contract_version": 4,
   "evidence_reviewed": "2026-09-20",
   "renames": [],
   "surfaces": [
@@ -55,11 +55,11 @@
       ]
     },
     {
-      "repository": "z-shell/.github",
-      "path": ".github/skills/zi-install/SKILL.md",
+      "repository": "z-shell/agent-skills",
+      "path": "plugins/z-shell/skills/zi-install/SKILL.md",
       "scope": "external",
       "evidence_status": "published",
-      "evidence": "https://github.com/z-shell/.github/blob/04fabd632012e00c825b50df0fd8f621d17c9f82/.github/skills/zi-install/SKILL.md",
+      "evidence": "https://github.com/z-shell/agent-skills/blob/01aa715a124a5db8775e1b62b6b778c2c89cd6a0/plugins/z-shell/skills/zi-install/SKILL.md",
       "surfaces": [
         "cli-profile-behavior",
         "output-status-messages",
