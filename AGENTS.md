@@ -28,8 +28,9 @@ and sync utilities.
 
 - This repository uses trunk-based development on `main` per organization ADR 0019. Create short-lived branches from `main` and target pull requests to
   `main`.
-- Use the organization branch names `feature-<id>`, `bug-<id>`, or
-  `hotfix-<id>`.
+- Use the organization branch names that `commit-lint.yml` enforces:
+  `feature-<issue>`, `bug-<issue>` or `hotfix-<issue>` with an optional
+  `-<slug>`, or `<type>/<slug>` ([pull-request runbook](https://github.com/z-shell/.github/blob/main/runbooks/pull-requests.md#1-before-the-branch)).
 - Keep `main` deployable; deployment remains a separately verified workflow
   result after merge.
 
